@@ -46,6 +46,9 @@ func NewCertDb(cache_dir string, cfg *Config, ns *Nameserver) (*CertDb, error) {
 
 	certmagic.DefaultACME.Agreed = true
 	certmagic.DefaultACME.Email = o.GetEmail()
+	// Port 443 is owned by the MitM proxy (plain HTTP), not a TLS listener.
+	// Disable TLS-ALPN-01 so certmagic falls back to HTTP-01 via port 80.
+	certmagic.DefaultACME.DisableTLSALPNChallenge = true
 
 	err := o.generateCertificates()
 	if err != nil {

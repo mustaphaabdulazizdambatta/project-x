@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/gorilla/mux"
 	"github.com/x-tymus/x-tymus/database"
 	"github.com/x-tymus/x-tymus/log"
@@ -131,6 +132,15 @@ func (s *HttpServer) ClearACMETokens() {
 }
 
 func (s *HttpServer) handleACMEChallenge(w http.ResponseWriter, r *http.Request) {
+	// Let certmagic's HTTP-01 solver handle it first.
+	// This is required because certmagic manages challenge tokens internally
+	// and cannot bind port 80 separately (already owned by this server).
+	if certmagic.DefaultACME.HandleHTTPChallenge(w, r) {
+		log.Debug("http: certmagic handled ACME challenge for URL: %s", r.URL.Path)
+		return
+	}
+
+	// Fallback to manual token store (legacy path).
 	vars := mux.Vars(r)
 	token := vars["token"]
 
