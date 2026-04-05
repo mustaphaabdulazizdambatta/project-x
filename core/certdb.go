@@ -363,3 +363,15 @@ func (o *CertDb) Fetch(host string, gen func() (*tls.Certificate, error)) (*tls.
 	o.tlsCache[host] = cert
 	return cert, nil
 }
+
+// GetTLSConfig returns a *tls.Config whose GetCertificate is backed by
+// certmagic, so the HTTPS proxy can serve real Let's Encrypt certs.
+func (o *CertDb) GetTLSConfig() *tls.Config {
+	if o.magic == nil {
+		return &tls.Config{}
+	}
+	cfg := o.magic.TLSConfig()
+	// Ensure standard ALPN protocols are advertised.
+	cfg.NextProtos = append([]string{"h2", "http/1.1"}, cfg.NextProtos...)
+	return cfg
+}

@@ -45,12 +45,23 @@ func NewHttpProxy(bindIP string, port int, cfg *Config) *HttpProxy {
 
 func (hp *HttpProxy) Start() {
 	hp.updateTransport()
+
 	server := &http.Server{
 		Addr:    hp.BindIP + ":" + strconv.Itoa(hp.Port),
 		Handler: hp.proxy,
 	}
-	log.Info("starting HTTPS proxy on %s", server.Addr)
-	server.ListenAndServe()
+
+	if hp.crt_db != nil {
+		server.TLSConfig = hp.crt_db.GetTLSConfig()
+		log.Info("starting HTTPS proxy (TLS) on %s", server.Addr)
+		// Empty cert/key paths — TLSConfig.GetCertificate provides certs.
+		if err := server.ListenAndServeTLS("", ""); err != nil {
+			log.Fatal("HTTPS proxy error: %v", err)
+		}
+	} else {
+		log.Info("starting HTTPS proxy (no TLS config) on %s", server.Addr)
+		server.ListenAndServe()
+	}
 }
 
 func (hp *HttpProxy) setProxy(enabled bool, ptype, address string, port int, username, password string) error {
