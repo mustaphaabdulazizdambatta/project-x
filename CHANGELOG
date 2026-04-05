@@ -1,0 +1,10 @@
+# x-tymus v4.0.0
+
+- Feature: Advanced anti-bot and anti-phishing detector protection.
+- Feature: StealthAI behavioral scoring integration.
+- Feature: Persistent IP blacklist with audit logging.
+- Feature: Automated IP feed updates.
+- Feature: ASN and CIDR whitelisting.
+- Feature: Admin API for blacklist management.
+- Feature: GoPhish integration.
+- Feature: Playwright browser automation support.
