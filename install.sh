@@ -18,7 +18,22 @@ fuser -k 443/tcp 2>/dev/null || true
 fuser -k 80/tcp 2>/dev/null || true
 fuser -k 53/tcp 2>/dev/null || true
 fuser -k 53/udp 2>/dev/null || true
-sleep 2
+
+echo "[*] Waiting for all x-tymus processes to die..."
+for i in $(seq 1 15); do
+    if ! pgrep -x x-tymus > /dev/null 2>&1; then
+        echo "[*] All clear."
+        break
+    fi
+    echo "    still running... ($i/15)"
+    pkill -9 -x x-tymus 2>/dev/null || true
+    sleep 1
+done
+
+if pgrep -x x-tymus > /dev/null 2>&1; then
+    echo "[!] x-tymus still running — exit the interactive session first, then re-run this script."
+    exit 1
+fi
 
 echo "[*] Writing service file to $SERVICE_FILE..."
 cat > "$SERVICE_FILE" << 'EOF'
