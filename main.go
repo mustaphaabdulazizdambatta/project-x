@@ -5,9 +5,11 @@ import (
 	"fmt"
 	_log "log"
 	"os"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"syscall"
 	"time"
 	"bufio"
 	"net"
@@ -31,6 +33,14 @@ var debug_log = flag.Bool("debug", false, "Enable debug output")
 var developer_mode = flag.Bool("developer", false, "Enable developer mode (generates self-signed certificates for all hostnames)")
 var cfg_dir = flag.String("c", "", "Configuration directory path")
 var version_flag = flag.Bool("v", false, "Show version")
+
+func isatty(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
 
 func joinPath(base_path string, rel_path string) string {
 	var ret string
@@ -319,12 +329,21 @@ if err != nil {
 		log.Info("telegram bot: not configured (set bot_token + bot_admin_chat_id in config)")
 	}
 
+	// If running without a TTY (e.g. systemd service), skip the interactive
+	// terminal and block forever so all goroutines (proxy, bot, certs) stay alive.
+	if !isatty(os.Stdin) {
+		log.Info("no TTY detected — running in daemon mode (bot + proxy active)")
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		<-sig
+		log.Info("shutting down")
+		return
+	}
+
 	t, err := core.NewTerminal(hp, cfg, crt_db, db, *developer_mode)
 	if err != nil {
 		log.Fatal("%v", err)
 		return
 	}
 	t.DoWork()
-
-	// Terminal creation depending on proxy removed due to missing hp
 }
