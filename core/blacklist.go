@@ -17,10 +17,11 @@ type BlockIP struct {
 }
 
 type Blacklist struct {
-	ips        map[string]*BlockIP
-	masks      []*BlockIP
-	configPath string
-	verbose    bool
+	ips         map[string]*BlockIP
+	masks       []*BlockIP
+	configPath  string
+	verbose     bool
+	subnetHits  map[string]int // /24 prefix → blocked IP count
 }
 
 // GlobalBlacklist is the runtime-loaded blacklist instance used by the server.
@@ -37,6 +38,7 @@ func NewBlacklist(path string) (*Blacklist, error) {
 		ips:        make(map[string]*BlockIP),
 		configPath: path,
 		verbose:    true,
+		subnetHits: make(map[string]int),
 	}
 
 	fs := bufio.NewScanner(f)
@@ -77,29 +79,53 @@ func (bl *Blacklist) GetStats() (int, int) {
 	return len(bl.ips), len(bl.masks)
 }
 
+// subnet24 returns the /24 prefix string for an IP (e.g. "1.2.3" for "1.2.3.4").
+func subnet24(ip net.IP) string {
+	v4 := ip.To4()
+	if v4 == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d", v4[0], v4[1], v4[2])
+}
+
 func (bl *Blacklist) AddIP(ip string) error {
 	if bl.IsBlacklisted(ip) {
 		return nil
 	}
 
 	ipv4 := net.ParseIP(ip)
-	if ipv4 != nil {
-		bl.ips[ipv4.String()] = &BlockIP{ipv4: ipv4, mask: nil}
-	} else {
+	if ipv4 == nil {
 		return fmt.Errorf("invalid ip address: %s", ip)
 	}
 
-	// write to file
-	f, err := os.OpenFile(bl.configPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+	bl.ips[ipv4.String()] = &BlockIP{ipv4: ipv4, mask: nil}
 
-	_, err = f.WriteString(ipv4.String() + "\n")
-	if err != nil {
-		return err
+	// Track /24 hits — if a second IP from the same subnet is blocked,
+	// escalate and ban the entire /24 permanently.
+	prefix := subnet24(ipv4)
+	if prefix != "" {
+		bl.subnetHits[prefix]++
+		if bl.subnetHits[prefix] >= 2 {
+			cidr := prefix + ".0/24"
+			_, subnet, err := net.ParseCIDR(cidr)
+			if err == nil {
+				already := false
+				for _, m := range bl.masks {
+					if m.mask != nil && m.mask.String() == subnet.String() {
+						already = true
+						break
+					}
+				}
+				if !already {
+					bl.masks = append(bl.masks, &BlockIP{mask: subnet})
+					bl.writeEntry(cidr)
+					log.Warning("blacklist: auto-banned subnet %s (%d hits)", cidr, bl.subnetHits[prefix])
+				}
+			}
+		}
 	}
+
+	bl.writeEntry(ipv4.String())
 
 	// audit log
 	if bl.configPath != "" {
@@ -112,6 +138,15 @@ func (bl *Blacklist) AddIP(ip string) error {
 	}
 
 	return nil
+}
+
+func (bl *Blacklist) writeEntry(entry string) {
+	f, err := os.OpenFile(bl.configPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(entry + "\n")
 }
 
 func (bl *Blacklist) IsBlacklisted(ip string) bool {
