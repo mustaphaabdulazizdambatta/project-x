@@ -44,6 +44,14 @@ type Terminal struct {
 }
 
 func NewTerminal(p *HttpProxy, cfg *Config, crt_db *CertDb, db *database.Database, developer bool) (*Terminal, error) {
+	return newTerminal(p, cfg, crt_db, db, developer, nil, nil)
+}
+
+func NewTerminalWithIO(p *HttpProxy, cfg *Config, crt_db *CertDb, db *database.Database, developer bool, stdin io.ReadCloser, stdout io.Writer) (*Terminal, error) {
+	return newTerminal(p, cfg, crt_db, db, developer, stdin, stdout)
+}
+
+func newTerminal(p *HttpProxy, cfg *Config, crt_db *CertDb, db *database.Database, developer bool, stdin io.ReadCloser, stdout io.Writer) (*Terminal, error) {
 	var err error
 	t := &Terminal{
 		cfg:       cfg,
@@ -56,13 +64,21 @@ func NewTerminal(p *HttpProxy, cfg *Config, crt_db *CertDb, db *database.Databas
 	t.createHelp()
 	t.completer = t.hlp.GetPrefixCompleter(LAYER_TOP)
 
-	t.rl, err = readline.NewEx(&readline.Config{
+	rlCfg := &readline.Config{
 		Prompt:              DEFAULT_PROMPT,
 		AutoComplete:        t.completer,
 		InterruptPrompt:     "^C",
 		EOFPrompt:           "exit",
 		FuncFilterInputRune: t.filterInput,
-	})
+	}
+	if stdin != nil {
+		rlCfg.Stdin = stdin
+		rlCfg.Stdout = stdout
+		rlCfg.Stderr = stdout
+		rlCfg.FuncGetWidth = func() int { return 220 }
+	}
+
+	t.rl, err = readline.NewEx(rlCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +91,7 @@ func (t *Terminal) Close() {
 
 func (t *Terminal) output(s string, args ...interface{}) {
 	out := fmt.Sprintf(s, args...)
-	fmt.Fprintf(color.Output, "\n%s\n", out)
+	fmt.Fprintf(t.rl.Stdout(), "\n%s\n", out)
 }
 
 func (t *Terminal) DoWork() {
