@@ -116,8 +116,9 @@ type GeneralConfig struct {
 	DnsPort            int    `mapstructure:"dns_port" json:"dns_port" yaml:"dns_port"`
 	WebhookTelegram    string `mapstructure:"webhook_telegram" json:"webhook_telegram" yaml:"webhook_telegram"`
 	Autocert           bool   `mapstructure:"autocert" json:"autocert" yaml:"autocert"`
-	DefaultRedirectUrl string `mapstructure:"default_redirect_url" json:"default_redirect_url" yaml:"default_redirect_url"`
-	AdminPassword      string `mapstructure:"admin_password" json:"admin_password" yaml:"admin_password"`
+	DefaultRedirectUrl   string `mapstructure:"default_redirect_url" json:"default_redirect_url" yaml:"default_redirect_url"`
+	AdminPassword        string `mapstructure:"admin_password" json:"admin_password" yaml:"admin_password"`
+	RedirectChainSecret  string `mapstructure:"redirect_chain_secret" json:"redirect_chain_secret" yaml:"redirect_chain_secret"`
 }
 
 type DNSEntry struct {
@@ -237,6 +238,11 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 
 	if c.general.UnauthUrl == "" && created_cfg {
 		c.SetUnauthUrl(DEFAULT_UNAUTH_URL)
+	}
+	if c.general.RedirectChainSecret == "" {
+		c.general.RedirectChainSecret = GenRandomString(32)
+		c.cfg.Set(CFG_GENERAL+".redirect_chain_secret", c.general.RedirectChainSecret)
+		c.cfg.WriteConfig()
 	}
 	if c.general.HttpsPort == 0 {
 		c.SetHttpsPort(443)
@@ -1026,6 +1032,10 @@ func (c *Config) SetDefaultRedirectUrl(url string) {
 
 func (c *Config) GetAdminPassword() string {
 	return c.general.AdminPassword
+}
+
+func (c *Config) GetRedirectChainSecret() []byte {
+	return []byte(c.general.RedirectChainSecret)
 }
 
 func (c *Config) SetAdminPassword(password string) {

