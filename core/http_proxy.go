@@ -1612,7 +1612,7 @@ func (p *HttpProxy) httpsWorker() {
 	p.sniListener, err = net.Listen("tcp", p.Server.Addr)
 	if err != nil {
 		log.Fatal("%s", err)
-		return
+		os.Exit(1)
 	}
 
 	p.isRunning = true

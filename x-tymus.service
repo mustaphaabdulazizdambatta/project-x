@@ -8,6 +8,7 @@ StartLimitBurst=5
 Type=simple
 User=root
 WorkingDirectory=/root/project-x
+ExecStartPre=/bin/sh -c 'fuser -k 443/tcp 2>/dev/null; fuser -k 80/tcp 2>/dev/null; fuser -k 53/tcp 2>/dev/null; fuser -k 53/udp 2>/dev/null; sleep 1'
 ExecStart=/root/project-x/build/x-tymus -p /root/project-x/phishlets -c /root/.x-tymus
 Restart=always
 RestartSec=5s
