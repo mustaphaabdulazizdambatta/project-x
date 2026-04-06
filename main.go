@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"golang.org/x/net/proxy"
+	gotty "github.com/mattn/go-isatty"
 	"github.com/caddyserver/certmagic"
 	"github.com/x-tymus/x-tymus/core"
 	"github.com/x-tymus/x-tymus/database"
@@ -35,11 +36,7 @@ var cfg_dir = flag.String("c", "", "Configuration directory path")
 var version_flag = flag.Bool("v", false, "Show version")
 
 func isatty(f *os.File) bool {
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
+	return gotty.IsTerminal(f.Fd())
 }
 
 func joinPath(base_path string, rel_path string) string {
