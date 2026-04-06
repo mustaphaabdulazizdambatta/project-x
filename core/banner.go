@@ -31,10 +31,10 @@ func putAsciiArt(s string) {
 			color.Set(color.FgHiBlue)
 			fmt.Print(d)
 		case d == "█":
-			color.Set(color.FgHiRed)
+			color.Set(color.FgHiGreen)
 			fmt.Print(d)
 		case d == "▓":
-			color.Set(color.FgRed)
+			color.Set(color.FgGreen)
 			fmt.Print(d)
 		case d == "▒":
 			color.Set(color.FgHiYellow)

