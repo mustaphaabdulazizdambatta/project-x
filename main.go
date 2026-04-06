@@ -334,6 +334,9 @@ if err != nil {
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
 		log.Info("shutting down")
+		if tbot != nil {
+			tbot.Stop()
+		}
 		return
 	}
 

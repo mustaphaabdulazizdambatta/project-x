@@ -82,9 +82,16 @@ func NewTelegramBot(cfg *Config, db *database.Database) (*TelegramBot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("telegram bot: %v", err)
 	}
+	// Drop any existing webhook so long-polling can take over cleanly.
+	api.RemoveWebhook()
 	b := &TelegramBot{api: api, cfg: cfg, db: db}
 	log.Info("telegram bot started: @%s", api.Self.UserName)
 	return b, nil
+}
+
+// Stop gracefully shuts down the polling loop.
+func (b *TelegramBot) Stop() {
+	b.api.StopReceivingUpdates()
 }
 
 // Start begins polling for updates and the expiry cleanup ticker.
