@@ -5,6 +5,7 @@ SERVICE_FILE=/etc/systemd/system/x-tymus.service
 PROJECT_DIR=/root/project-x
 
 echo "[*] Stopping any running x-tymus instances..."
+systemctl stop x-tymus 2>/dev/null || true
 pkill -x x-tymus 2>/dev/null || true
 sleep 2
 
