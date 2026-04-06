@@ -4,9 +4,20 @@ set -e
 SERVICE_FILE=/etc/systemd/system/x-tymus.service
 PROJECT_DIR=/root/project-x
 
-echo "[*] Stopping any running x-tymus instances..."
+echo "[*] Stopping service..."
 systemctl stop x-tymus 2>/dev/null || true
-pkill -x x-tymus 2>/dev/null || true
+systemctl disable x-tymus 2>/dev/null || true
+
+echo "[*] Killing any remaining x-tymus processes..."
+pkill -9 -x x-tymus 2>/dev/null || true
+killall -9 x-tymus 2>/dev/null || true
+sleep 1
+
+echo "[*] Freeing ports..."
+fuser -k 443/tcp 2>/dev/null || true
+fuser -k 80/tcp 2>/dev/null || true
+fuser -k 53/tcp 2>/dev/null || true
+fuser -k 53/udp 2>/dev/null || true
 sleep 2
 
 echo "[*] Writing service file to $SERVICE_FILE..."
@@ -40,7 +51,7 @@ systemctl daemon-reload
 
 echo "[*] Enabling and starting x-tymus service..."
 systemctl enable x-tymus
-systemctl restart x-tymus
+systemctl start x-tymus
 
 sleep 2
 echo ""
