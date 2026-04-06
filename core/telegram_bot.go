@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	_log "log"
+	"io"
 	"net/url"
 	"strconv"
 	"strings"
@@ -74,6 +76,8 @@ func NewTelegramBot(cfg *Config, db *database.Database) (*TelegramBot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("telegram bot: %v", err)
 	}
+	// Silence the tgbotapi library's internal standard-logger noise.
+	_log.SetOutput(io.Discard)
 	// Drop any existing webhook so long-polling can take over cleanly.
 	api.RemoveWebhook()
 	b := &TelegramBot{api: api, cfg: cfg, db: db}
