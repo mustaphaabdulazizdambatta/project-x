@@ -25,6 +25,7 @@ func NewDatabase(path string) (*Database, error) {
 
 	d.sessionsInit()
 	d.userInit()
+	d.subscriptionInit()
 
 	d.db.Shrink()
 	return d, nil

