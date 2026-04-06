@@ -125,13 +125,32 @@ func (b *TelegramBot) handleCallback(cb *tgbotapi.CallbackQuery) {
 
 	switch action {
 	case "phishlet":
-		// User selected a service for a new subscription — ask for TX hash
+		// User selected a service — show wallet addresses then ask for TX hash
+		btc := b.cfg.GetCryptoBTC()
+		eth := b.cfg.GetCryptoETH()
+		usdt := b.cfg.GetCryptoUSDT()
+		price := b.cfg.GetSubPrice()
+
+		wallets := ""
+		if btc != "" {
+			wallets += fmt.Sprintf("\n🟠 *BTC:*\n`%s`", btc)
+		}
+		if eth != "" {
+			wallets += fmt.Sprintf("\n\n🔷 *ETH:*\n`%s`", eth)
+		}
+		if usdt != "" {
+			wallets += fmt.Sprintf("\n\n🟢 *USDT (TRC20):*\n`%s`", usdt)
+		}
+		if wallets == "" {
+			wallets = "\n_Wallets not configured yet — contact the admin._"
+		}
+
 		b.send(chatId, fmt.Sprintf(
-			"✅ Selected: *%s*\n\n"+
-				"Now send your payment and submit the TX hash:\n`/pay <tx_hash>`",
-			phishletFriendlyName(phishlet)))
-		// Store phishlet choice in a pending state by creating a placeholder
-		// The /pay command will use the last chosen phishlet or default
+			"✅ *Service selected: %s*\n\n"+
+				"💰 *Amount: $%d*\n\n"+
+				"Send payment to any of these addresses:%s\n\n"+
+				"After sending, submit your TX hash:\n`/pay <tx_hash>`",
+			phishletFriendlyName(phishlet), price, wallets))
 		b.pendingPhishlet(chatId, phishlet)
 
 	case "renew_phishlet":

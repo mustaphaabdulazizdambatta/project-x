@@ -58,10 +58,18 @@ var knownScannerUA = []string{
 	"slurp",
 	"applebot",
 	"facebookexternalhit",
+	"facebot",
 	"twitterbot",
 	"linkedinbot",
 	"discordbot",
 	"telegrambot",
+	"whatsapp",
+	"slackbot",
+	"slack-imgproxy",
+	"iframely",
+	"embedly",
+	"preview",
+	"prerender",
 	"semrushbot",
 	"ahrefsbot",
 	"mj12bot",
@@ -79,6 +87,13 @@ var knownScannerUA = []string{
 	"dataforseo",
 	"pinterestbot",
 	"ia_archiver",
+	// Link preview / URL unfurling services
+	"xing-contenttabreceiver",
+	"bitrix link preview",
+	"vkshare",
+	"w3c_validator",
+	"curl/",
+	"wget/",
 }
 
 // knownScannerCIDRs are static IP ranges exclusively used by well-known
@@ -103,6 +118,21 @@ var knownScannerCIDRs = []string{
 	// IPVoid
 	"80.82.77.0/24",
 	"80.82.78.0/24",
+	// Telegram servers (link preview fetcher)
+	"149.154.160.0/20",
+	"91.108.4.0/22",
+	"91.108.8.0/22",
+	"91.108.56.0/22",
+	"91.108.56.0/23",
+	"2001:b28:f23d::/48",
+	"2001:b28:f23f::/48",
+	// Facebook link preview
+	"69.63.176.0/20",
+	"66.220.144.0/20",
+	"31.13.24.0/21",
+	// Slack link unfurling
+	"54.172.0.0/16",
+	"107.23.0.0/16",
 }
 
 var scannerNets []*net.IPNet
