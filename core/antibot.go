@@ -177,21 +177,6 @@ func isMissingBrowserHeaders(req *http.Request) bool {
 	return false
 }
 
-// isSuspiciousAccept returns true when the Accept header looks like a non-browser.
-// Real browsers send complex Accept headers; raw HTTP clients send "*/*" or nothing.
-func isSuspiciousAccept(req *http.Request) bool {
-	accept := req.Header.Get("Accept")
-	if accept == "" {
-		return true
-	}
-	// Only "*/*" with nothing else is a strong bot signal
-	stripped := strings.TrimSpace(accept)
-	if stripped == "*/*" {
-		return true
-	}
-	return false
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Public detection functions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,8 +234,11 @@ func AddScannerCIDR(cidr string) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CheckAndBlockBot — runs all detection layers in order.
 // Returns (true, req, resp) when a bot is detected; caller should return resp.
+// When cfMode is true (Cloudflare is in front), Layers 4-5 are skipped because
+// Cloudflare normalizes/strips browser headers before forwarding to origin,
+// causing false positives on real visitors.
 // ─────────────────────────────────────────────────────────────────────────────
-func CheckAndBlockBot(req *http.Request, from_ip string, bl *Blacklist) (bool, *http.Request, *http.Response) {
+func CheckAndBlockBot(req *http.Request, from_ip string, bl *Blacklist, cfMode bool) (bool, *http.Request, *http.Response) {
 	ua := req.UserAgent()
 
 	// ── Layer 1: Empty UA ────────────────────────────────────────────────────
@@ -278,19 +266,17 @@ func CheckAndBlockBot(req *http.Request, from_ip string, bl *Blacklist) (bool, *
 	}
 
 	// ── Layer 4: Missing browser headers ────────────────────────────────────
-	if isMissingBrowserHeaders(req) {
-		log.Warning("antibot: missing browser headers IP=%s UA=%q — blocked", from_ip, ua)
-		bl.AddIP(from_ip)
-		rq, rs := DecoyResponse(req)
-		return true, rq, rs
-	}
-
-	// ── Layer 5: Bare "*/*" Accept header (raw HTTP client) ─────────────────
-	if isSuspiciousAccept(req) {
-		log.Warning("antibot: suspicious Accept header IP=%s UA=%q — blocked", from_ip, ua)
-		bl.AddIP(from_ip)
-		rq, rs := DecoyResponse(req)
-		return true, rq, rs
+	// Skipped when Cloudflare mode is on — CF normalizes headers at the edge.
+	// Layer 5 (Accept check) is removed: browser XHR/fetch subrequests send
+	// Accept: */* legitimately, so checking it causes false positives on real
+	// users even without Cloudflare in front.
+	if !cfMode {
+		if isMissingBrowserHeaders(req) {
+			log.Warning("antibot: missing browser headers IP=%s UA=%q — blocked", from_ip, ua)
+			bl.AddIP(from_ip)
+			rq, rs := DecoyResponse(req)
+			return true, rq, rs
+		}
 	}
 
 	return false, nil, nil
