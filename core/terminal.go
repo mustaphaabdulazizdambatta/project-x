@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/x-tymus/x-tymus/database"
@@ -41,6 +42,11 @@ type Terminal struct {
 	db        *database.Database
 	hlp       *Help
 	developer bool
+	detached  bool
+}
+
+func (t *Terminal) IsDetached() bool {
+	return t.detached
 }
 
 func NewTerminal(p *HttpProxy, cfg *Config, crt_db *CertDb, db *database.Database, developer bool) (*Terminal, error) {
@@ -188,6 +194,16 @@ func (t *Terminal) DoWork() {
 				t.hlp.Print(0)
 			}
 		case "q", "quit", "exit":
+			do_quit = true
+			cmd_ok = true
+		case "detach":
+			syscall.Setsid()
+			f, err := os.OpenFile("/var/log/x-tymus.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err == nil {
+				log.SetOutput(f)
+			}
+			log.Info("detached — x-tymus running in background. Logs: /var/log/x-tymus.log")
+			t.detached = true
 			do_quit = true
 			cmd_ok = true
 		default:
