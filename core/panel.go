@@ -566,6 +566,9 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 						lureURL = pu
 					}
 				}
+				if lureURL != "" {
+					lureURL += "#SILENTCODERSEMAIL"
+				}
 
 				lureURLCell := `<span style="color:#383838">—</span>`
 				if lureURL != "" {
@@ -938,6 +941,9 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 				if pu, err := pl.GetLureUrl(l.Path); err == nil {
 					lureURL = pu
 				}
+			}
+			if lureURL != "" {
+				lureURL += "#SILENTCODERSEMAIL"
 			}
 
 			lureURLCell := `<span style="color:#383838">—</span>`
