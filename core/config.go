@@ -900,6 +900,16 @@ func (c *Config) GetAllLures() []*Lure {
 	return c.lures
 }
 
+// GetLureIndexByPtr returns the integer index of the given lure pointer, or -1 if not found.
+func (c *Config) GetLureIndexByPtr(l *Lure) int {
+	for i, lure := range c.lures {
+		if lure == l {
+			return i
+		}
+	}
+	return -1
+}
+
 func (c *Config) GetLuresByUser(userUsername string) []*Lure {
 	var out []*Lure
 	for _, l := range c.lures {
