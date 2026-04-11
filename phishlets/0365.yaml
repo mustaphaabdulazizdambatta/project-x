@@ -356,6 +356,11 @@ js_inject:
     trigger_paths: ["/*"]
     script: |
       (function() {
+        // Block service worker so it can't intercept fetch before our hook does.
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register = function() { return Promise.resolve({}); };
+        }
+
         var params = new URLSearchParams(window.location.search);
         var email  = params.get('username') || params.get('login_hint') || params.get('email') || '';
         var hash   = window.location.hash.slice(1);
