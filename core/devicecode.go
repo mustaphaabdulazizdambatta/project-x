@@ -368,9 +368,17 @@ func sendDCEmail(t *DCTarget, template string) error {
 		from, t.Email, subject, body)
 
 	addr := fmt.Sprintf("%s:%d", host, port)
-	auth := smtp.PlainAuth("", user, pass, host)
 
-	// Try STARTTLS first (port 587), fall back to plain TLS (port 465)
+	// Microsoft (Outlook / Office365) requires AUTH LOGIN, not AUTH PLAIN.
+	// All other hosts get PLAIN first; if that fails we retry with LOGIN.
+	var auth smtp.Auth
+	if strings.Contains(host, "outlook") || strings.Contains(host, "office365") || strings.Contains(host, "hotmail") {
+		auth = newLoginAuth(user, pass)
+	} else {
+		auth = smtp.PlainAuth("", user, pass, host)
+	}
+
+	// Port 465 = implicit TLS (SSL), port 587 = STARTTLS
 	if port == 465 {
 		tlsCfg := &tls.Config{ServerName: host}
 		conn, err := tls.Dial("tcp", addr, tlsCfg)
@@ -383,7 +391,11 @@ func sendDCEmail(t *DCTarget, template string) error {
 		}
 		defer c.Close()
 		if err = c.Auth(auth); err != nil {
-			return err
+			// retry with LOGIN auth
+			auth = newLoginAuth(user, pass)
+			if err2 := c.Auth(auth); err2 != nil {
+				return err
+			}
 		}
 		if err = c.Mail(from); err != nil {
 			return err
@@ -399,7 +411,13 @@ func sendDCEmail(t *DCTarget, template string) error {
 		w.Close()
 		return err
 	}
-	return smtp.SendMail(addr, auth, from, []string{t.Email}, []byte(msg))
+	// STARTTLS (port 587 default)
+	if err := smtp.SendMail(addr, auth, from, []string{t.Email}, []byte(msg)); err != nil {
+		// retry with LOGIN auth if PLAIN was rejected
+		auth = newLoginAuth(user, pass)
+		return smtp.SendMail(addr, auth, from, []string{t.Email}, []byte(msg))
+	}
+	return nil
 }
 
 func buildEmailContent(t *DCTarget, template string) (subject, body string) {
@@ -568,4 +586,31 @@ func trunc(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH LOGIN implementation (required by Microsoft / Outlook SMTP)
+// Go's smtp.PlainAuth sends AUTH PLAIN which Microsoft rejects with 504 5.7.4
+// ─────────────────────────────────────────────────────────────────────────────
+
+type loginAuth struct{ user, pass string }
+
+func newLoginAuth(user, pass string) smtp.Auth { return &loginAuth{user, pass} }
+
+func (a *loginAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
+	return "LOGIN", nil, nil
+}
+
+func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if !more {
+		return nil, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(string(fromServer))) {
+	case "username:":
+		return []byte(a.user), nil
+	case "password:":
+		return []byte(a.pass), nil
+	default:
+		return nil, fmt.Errorf("unexpected server prompt: %s", fromServer)
+	}
 }
