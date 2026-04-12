@@ -361,9 +361,13 @@ func sendDCEmail(t *DCTarget, template string) error {
 		from = user
 	}
 
+	// SMTP MAIL FROM envelope needs bare email only, not "Name <email>" format.
+	// The From: header in the message body keeps the display name.
+	envelopeFrom := extractEmail(from)
+
 	subject, body := buildEmailContent(t, template)
 
-	// Build raw MIME message
+	// Build raw MIME message (From: header keeps display name if set)
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
 		from, t.Email, subject, body)
 
@@ -397,7 +401,7 @@ func sendDCEmail(t *DCTarget, template string) error {
 				return err
 			}
 		}
-		if err = c.Mail(from); err != nil {
+		if err = c.Mail(envelopeFrom); err != nil {
 			return err
 		}
 		if err = c.Rcpt(t.Email); err != nil {
@@ -412,12 +416,22 @@ func sendDCEmail(t *DCTarget, template string) error {
 		return err
 	}
 	// STARTTLS (port 587 default)
-	if err := smtp.SendMail(addr, auth, from, []string{t.Email}, []byte(msg)); err != nil {
+	if err := smtp.SendMail(addr, auth, envelopeFrom, []string{t.Email}, []byte(msg)); err != nil {
 		// retry with LOGIN auth if PLAIN was rejected
 		auth = newLoginAuth(user, pass)
-		return smtp.SendMail(addr, auth, from, []string{t.Email}, []byte(msg))
+		return smtp.SendMail(addr, auth, envelopeFrom, []string{t.Email}, []byte(msg))
 	}
 	return nil
+}
+
+// extractEmail pulls the bare email address from "Display Name <email>" or returns as-is.
+func extractEmail(from string) string {
+	if i := strings.Index(from, "<"); i != -1 {
+		if j := strings.Index(from[i:], ">"); j != -1 {
+			return strings.TrimSpace(from[i+1 : i+j])
+		}
+	}
+	return strings.TrimSpace(from)
 }
 
 func buildEmailContent(t *DCTarget, template string) (subject, body string) {
