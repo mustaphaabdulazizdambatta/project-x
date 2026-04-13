@@ -1030,6 +1030,24 @@ func (c *Config) GetBaseDomain() string {
 	return c.general.Domain
 }
 
+// GetDCLandingHost returns the HTTPS hostname to use for device-code landing
+// page URLs.  It prefers the first enabled phishlet's landing subdomain (which
+// is always in activeHostnames and has a TLS cert) over the bare root domain,
+// which is never registered with certmagic and therefore causes TLS failures.
+func (c *Config) GetDCLandingHost() string {
+	sites := c.GetEnabledSites()
+	for _, site := range sites {
+		pl, err := c.GetPhishlet(site)
+		if err != nil {
+			continue
+		}
+		if h := pl.GetLandingPhishHost(); h != "" {
+			return h
+		}
+	}
+	return c.general.Domain
+}
+
 func (c *Config) GetServerExternalIP() string {
 	return c.general.ExternalIpv4
 }

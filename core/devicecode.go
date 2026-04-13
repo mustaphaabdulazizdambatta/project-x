@@ -480,8 +480,10 @@ func personalizeText(text, email string) string {
 func personalizeForTarget(text string, t *DCTarget) string {
 	verifyLink := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
 	landingURL := ""
-	if GlobalDCCfg != nil && GlobalDCCfg.GetBaseDomain() != "" {
-		landingURL = "https://" + GlobalDCCfg.GetBaseDomain() + "/dc/" + t.LandingToken
+	if GlobalDCCfg != nil {
+		if h := GlobalDCCfg.GetDCLandingHost(); h != "" {
+			landingURL = "https://" + h + "/dc/" + t.LandingToken
+		}
 	}
 	if landingURL == "" {
 		landingURL = verifyLink
@@ -501,8 +503,10 @@ func personalizeForTarget(text string, t *DCTarget) string {
 func buildEmailContent(t *DCTarget, tmpl string) (subject, body string) {
 	verifyLink := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
 	landingURL := ""
-	if GlobalDCCfg != nil && GlobalDCCfg.GetBaseDomain() != "" {
-		landingURL = "https://" + GlobalDCCfg.GetBaseDomain() + "/dc/" + t.LandingToken
+	if GlobalDCCfg != nil {
+		if h := GlobalDCCfg.GetDCLandingHost(); h != "" {
+			landingURL = "https://" + h + "/dc/" + t.LandingToken
+		}
 	}
 	if landingURL == "" {
 		landingURL = verifyLink
