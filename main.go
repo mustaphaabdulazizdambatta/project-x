@@ -332,6 +332,10 @@ if err != nil {
 	// terminal and block forever so all goroutines (proxy, bot, certs) stay alive.
 	if !isatty(os.Stdin) {
 		log.Info("no TTY detected — running in daemon mode (bot + proxy active)")
+		// Set up TLS certificates exactly as the interactive terminal would.
+		// Without this, certmagic has no certs loaded and every inbound TLS
+		// connection hangs while it attempts an on-demand ACME challenge.
+		crt_db.SetupCertificates(cfg, true)
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig

@@ -364,6 +364,31 @@ func (o *CertDb) Fetch(host string, gen func() (*tls.Certificate, error)) (*tls.
 	return cert, nil
 }
 
+// SetupCertificates replicates what Terminal.manageCertificates does so it
+// can be called from daemon mode (no TTY) where no Terminal is created.
+// Pass the Config so we know which hostnames are active and whether autocert
+// is enabled.
+func (o *CertDb) SetupCertificates(cfg *Config, verbose bool) {
+	cfg.refreshActiveHostnames()
+	if cfg.IsAutocertEnabled() {
+		hosts := cfg.GetActiveHostnames("")
+		if verbose {
+			log.Info("obtaining and setting up %d TLS certificates - please wait up to 60 seconds...", len(hosts))
+		}
+		if err := o.setManagedSync(hosts, 60*time.Second); err != nil {
+			log.Error("failed to set up TLS certificates: %s", err)
+			return
+		}
+		if verbose {
+			log.Info("successfully set up all TLS certificates")
+		}
+	} else {
+		if err := o.setUnmanagedSync(verbose); err != nil {
+			log.Error("failed to set up TLS certificates: %s", err)
+		}
+	}
+}
+
 // GetTLSConfig returns a *tls.Config whose GetCertificate is backed by
 // certmagic, so the HTTPS proxy can serve real Let's Encrypt certs.
 func (o *CertDb) GetTLSConfig() *tls.Config {
