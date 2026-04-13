@@ -861,8 +861,10 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				tgt.mu.Unlock()
 				tokenCell := `<span style="color:#383838">—</span>`
 				if at != "" {
-					tokenCell = fmt.Sprintf(`<details><summary>show</summary><pre style="max-width:300px;overflow-x:auto">%s</pre></details>`,
-						template.HTMLEscapeString(at))
+					useURL := "/dc/use/" + tgt.LandingToken
+					tokenCell = fmt.Sprintf(
+						`<a href="%s" target="_blank" style="display:inline-block;background:#0078d4;color:#fff;padding:4px 12px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none;letter-spacing:.3px">Open Dashboard</a>`,
+						template.HTMLEscapeString(useURL))
 				}
 
 				b.WriteString(fmt.Sprintf(`<tr>
