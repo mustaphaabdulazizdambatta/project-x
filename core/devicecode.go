@@ -617,6 +617,41 @@ func dcB64(s string) string {
 	return base64.URLEncoding.EncodeToString([]byte(s))
 }
 
+// RefreshForScope exchanges a FOCI refresh token for an access token scoped to
+// the given resource. Returns the new access token and a fresh refresh token.
+func RefreshForScope(rt, tenant, scope string) (accessToken, newRT string, err error) {
+	if tenant == "" {
+		tenant = "common"
+	}
+	apiURL := "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/token"
+	form := url.Values{}
+	form.Set("client_id", dcClientID)
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", rt)
+	form.Set("scope", scope)
+
+	resp, err := http.PostForm(apiURL, form)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var tok struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &tok); err != nil {
+		return "", "", fmt.Errorf("bad response: %v", err)
+	}
+	if tok.Error != "" {
+		return "", "", fmt.Errorf("%s: %s", tok.Error, tok.ErrorDesc)
+	}
+	return tok.AccessToken, tok.RefreshToken, nil
+}
+
 // verifyURL returns the HTML consent page URL with the user_code pre-filled.
 //
 // microsoft.com/devicelogin?code=XXX now server-redirects to the JSON API
