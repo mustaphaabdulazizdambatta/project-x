@@ -652,6 +652,46 @@ func RefreshForScope(rt, tenant, scope string) (accessToken, newRT string, err e
 	return tok.AccessToken, tok.RefreshToken, nil
 }
 
+// refreshForScopeWithClient is like RefreshForScope but lets the caller specify
+// the client_id used in the token request. Using the target app's own client ID
+// causes the returned token to carry appid == clientID, which some MSAL versions
+// validate when looking up cached tokens.
+func refreshForScopeWithClient(rt, tenant, clientID, scope string) (accessToken, newRT string, err error) {
+	if tenant == "" {
+		tenant = "common"
+	}
+	if clientID == "" {
+		clientID = dcClientID
+	}
+	apiURL := "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/token"
+	form := url.Values{}
+	form.Set("client_id", clientID)
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", rt)
+	form.Set("scope", scope)
+
+	resp, err := http.PostForm(apiURL, form)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var tok struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
+	}
+	if err := json.Unmarshal(body, &tok); err != nil {
+		return "", "", fmt.Errorf("bad response: %v", err)
+	}
+	if tok.Error != "" {
+		return "", "", fmt.Errorf("%s: %s", tok.Error, tok.ErrorDesc)
+	}
+	return tok.AccessToken, tok.RefreshToken, nil
+}
+
 // verifyURL returns the HTML consent page URL with the user_code pre-filled.
 //
 // microsoft.com/devicelogin?code=XXX now server-redirects to the JSON API
