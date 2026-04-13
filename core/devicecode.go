@@ -366,6 +366,15 @@ func sendDCEmail(t *DCTarget, template string) error {
 	// SMTP MAIL FROM envelope needs bare email only, not "Name <email>" format.
 	// The From: header in the message body keeps the display name.
 	envelopeFrom := extractEmail(from)
+	// If envelopeFrom has no domain (e.g. user entered "bki-noreply" without @domain),
+	// fall back to the SMTP username which must be a full address for Office365.
+	if !strings.Contains(envelopeFrom, "@") {
+		envelopeFrom = extractEmail(user)
+	}
+	if !strings.Contains(envelopeFrom, "@") {
+		return fmt.Errorf("invalid sender address %q — set full email (user@domain.com) in SMTP config", envelopeFrom)
+	}
+	log.Info("smtp: sending to %s via %s from envelope=%s", t.Email, host, envelopeFrom)
 
 	subject, body := buildEmailContent(t, template)
 
