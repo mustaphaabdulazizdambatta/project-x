@@ -307,6 +307,7 @@ if err != nil {
 	hs, _ := core.NewHttpServer()
 	hs.Cfg = cfg
 	hs.Db = db
+	core.LoadDCState()
 	go hs.Start()
 
 	hp, err := core.NewHttpProxy(cfg.GetServerBindIP(), cfg.GetHttpsPort(), cfg, crt_db, db, bl, *developer_mode)
