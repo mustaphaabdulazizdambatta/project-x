@@ -481,6 +481,9 @@ func personalizeText(text, email string) string {
 		"DOMC",                    domainCap,
 		"DOMs",                    domainBase,
 		"SILENTCODERSEMAIL",       email,
+		// URL-safe variant — use in href/src attributes to avoid raw "@" spam signals.
+		// e.g. href="https://phish.com/?e=SILENTCODERSEMAILURL" → "...?e=user%40domain.com"
+		"SILENTCODERSEMAILURL",    url.QueryEscape(email),
 		"EMAILURLSILENTC0DERS",    dcB64(email),
 		"SILENTCODERSLIMAHURUF",   dcRandStr(5, "alpha"),
 		"SILENTCODERSBANYAKHURUF", dcRandStr(50, "alpha"),
