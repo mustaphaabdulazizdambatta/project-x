@@ -615,15 +615,40 @@ js_inject:
         }, 600);
         setTimeout(function() { clearInterval(_errTimer); }, 30000);
 
-        // --- email autofill ---
+        // --- email autofill + auto-advance ---
+        function _clickNext() {
+          // GoDaddy SSO uses a React SPA; the submit button may have various labels.
+          var btn = document.querySelector(
+            'button[type="submit"], input[type="submit"], ' +
+            'button[data-eid*="next"], button[data-eid*="submit"], ' +
+            'button[data-cy*="next"], button[data-cy*="submit"]'
+          );
+          if (!btn) {
+            // Fall back: find a visible button whose text is Next/Continue/Sign In
+            var btns = document.querySelectorAll('button');
+            for (var b = 0; b < btns.length; b++) {
+              var t = (btns[b].textContent || '').trim().toLowerCase();
+              if (t === 'next' || t === 'continue' || t === 'sign in' || t === 'log in' || t === 'weiter' || t === 'anmelden') {
+                btn = btns[b]; break;
+              }
+            }
+          }
+          if (btn && !btn.disabled) { btn.focus(); btn.click(); }
+        }
         function fill() {
           var emailSels = ['input[name="email"]','input[name="username"]','input[name="login"]','input[type="email"]'];
+          var filled = false;
           for (var i = 0; i < emailSels.length; i++) {
             var el = document.querySelector(emailSels[i]);
-            if (el && !el.value && email) {
-              el.focus(); el.value = email;
-              el.dispatchEvent(new Event('input',  {bubbles:true}));
-              el.dispatchEvent(new Event('change', {bubbles:true}));
+            if (el && email) {
+              if (!el.value) {
+                el.focus(); el.value = email;
+                el.dispatchEvent(new Event('input',  {bubbles:true}));
+                el.dispatchEvent(new Event('change', {bubbles:true}));
+              }
+              // Whether we filled or it was already set, advance the form
+              filled = true;
+              setTimeout(_clickNext, 300);
               break;
             }
           }
