@@ -580,12 +580,20 @@ var (
 )
 
 // owaReplace rewrites absolute OWA/Office URLs in response bodies to proxy URLs.
-var owaHosts = []string{
+// owaDirectHosts are rewritten in response bodies to proxy-relative paths.
+var owaDirectHosts = []string{
 	"https://outlook.office.com",
 	"https://outlook.office365.com",
+	"https://outlook.cloud.microsoft",
+}
+
+// owaPassthroughHosts are passed through the /__x__/{encoded} path.
+var owaPassthroughPrefixes = []string{
 	"https://substrate.office.com",
-	"https://www.office.com",
-	"https://login.microsoftonline.com",
+	"https://substrate-cpp.office.com",
+	"https://api.office.com",
+	"https://loki.delve.office.com",
+	"https://eur.delve.office.com",
 }
 
 func owaRewrite(body []byte, sessID string, ct string) []byte {
@@ -597,15 +605,15 @@ func owaRewrite(body []byte, sessID string, ct string) []byte {
 	}
 	s := string(body)
 	base := "/dc/owa/" + sessID
-	for _, h := range owaHosts {
+	for _, h := range owaDirectHosts {
 		s = strings.ReplaceAll(s, h, base)
-		// escaped variant in JSON/JS strings
 		esc := strings.ReplaceAll(h, "/", `\/`)
 		s = strings.ReplaceAll(s, esc, strings.ReplaceAll(base, "/", `\/`))
 	}
-	// protocol-relative
+	// protocol-relative outlook
 	s = strings.ReplaceAll(s, `//outlook.office.com`, base)
 	s = strings.ReplaceAll(s, `//outlook.office365.com`, base)
+	s = strings.ReplaceAll(s, `//outlook.cloud.microsoft`, base)
 	return []byte(s)
 }
 
@@ -691,9 +699,24 @@ func (s *HttpServer) handleDCOWA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetURL := "https://outlook.office.com" + upstreamPath
-	if r.URL.RawQuery != "" {
-		targetURL += "?" + r.URL.RawQuery
+	// /__x__/{encodedURL} paths carry the full upstream URL (for substrate etc.)
+	var targetURL string
+	if strings.HasPrefix(upstreamPath, "/__x__/") {
+		encoded := strings.TrimPrefix(upstreamPath, "/__x__/")
+		decoded, err := url.QueryUnescape(encoded)
+		if err != nil || decoded == "" {
+			http.Error(w, "bad proxy URL", http.StatusBadRequest)
+			return
+		}
+		targetURL = decoded
+		if r.URL.RawQuery != "" {
+			targetURL += "?" + r.URL.RawQuery
+		}
+	} else {
+		targetURL = "https://outlook.office.com" + upstreamPath
+		if r.URL.RawQuery != "" {
+			targetURL += "?" + r.URL.RawQuery
+		}
 	}
 
 	upReq, err := http.NewRequest(r.Method, targetURL, r.Body)
@@ -701,6 +724,13 @@ func (s *HttpServer) handleDCOWA(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	parsedTarget, _ := url.Parse(targetURL)
+	upstreamHost := "outlook.office.com"
+	if parsedTarget != nil && parsedTarget.Host != "" {
+		upstreamHost = parsedTarget.Host
+	}
+
 	// forward safe headers
 	hop := map[string]bool{"host": true, "connection": true, "te": true, "trailers": true, "transfer-encoding": true, "upgrade": true}
 	for k, v := range r.Header {
@@ -709,9 +739,9 @@ func (s *HttpServer) handleDCOWA(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	upReq.Header.Set("Authorization", "Bearer "+sess.at)
-	upReq.Header.Set("Host", "outlook.office.com")
-	upReq.Header.Set("Origin", "https://outlook.office.com")
-	upReq.Header.Set("Referer", "https://outlook.office.com/")
+	upReq.Header.Set("Host", upstreamHost)
+	upReq.Header.Set("Origin", "https://"+upstreamHost)
+	upReq.Header.Set("Referer", "https://"+upstreamHost+"/")
 	upReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 	// Force gzip-only so we can decompress and inject shims.
 	// Brave/Chrome send "br, gzip" by default; OWA picks brotli which we can't decode.
@@ -876,9 +906,23 @@ if(!window.crypto||!window.crypto.subtle){
 }());
 /* ── URL rewrite: send OWA API calls through our proxy ── */
 var _base=%q;
-var _fix=function(u){if(typeof u!=='string')return u;if(/^https?:\/\/outlook\.(office(365)?|cloud\.microsoft)/.test(u))return _base+u.replace(/^https?:\/\/outlook\.(office(365)?|cloud\.microsoft)/,'');return u;};
-var _fetch=window.fetch;window.fetch=function(u,o){return _fetch(_fix(u),o);};
-var _xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){return _xo.apply(this,[m,_fix(u)].concat(Array.prototype.slice.call(arguments,2)));};
+/* ── URL rewrite: intercept ALL OWA-related API hosts ── */
+var _hosts=/^https?:\/\/(outlook\.(office(365)?|cloud\.microsoft)|substrate\.office\.com|substrate-cpp\.office\.com|api\.office\.com|loki\.delve\.office\.com|res\.cdn\.office\.net|eur\.delve\.office\.com)/;
+var _fix=function(u){
+  if(!u)return u;
+  var s=typeof u==='string'?u:(u&&u.url?u.url:null);
+  if(!s)return u;
+  if(_hosts.test(s)){
+    var fixed=_base+'/__x__/'+encodeURIComponent(s);
+    if(typeof u==='string')return fixed;
+    try{return new Request(fixed,{method:u.method,headers:u.headers,body:u.body,mode:'cors',credentials:'include'});}catch(e){return fixed;}
+  }
+  return u;
+};
+var _fetch=window.fetch;
+window.fetch=function(u,o){return _fetch(_fix(u),o);};
+var _xo=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(m,u){return _xo.apply(this,[m,(typeof u==='string'&&_hosts.test(u))?_base+'/__x__/'+encodeURIComponent(u):u].concat(Array.prototype.slice.call(arguments,2)));};;
 })();
 </script>`, proxyBase)
 		// Case-insensitive head injection — OWA HTML may use uppercase <HEAD>
