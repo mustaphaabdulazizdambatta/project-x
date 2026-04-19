@@ -867,8 +867,16 @@ var _subtle={
   importKey:function(f,d,a,e,u){return Promise.resolve({type:'secret',algorithm:a,_r:d instanceof Uint8Array?d:new Uint8Array(d instanceof ArrayBuffer?d:d.buffer||new ArrayBuffer(32))});},
   sign:function(a,k,d){return Promise.resolve(new Uint8Array(32).buffer);},
   verify:function(){return Promise.resolve(true);},
-  encrypt:function(a,k,d){return Promise.resolve(d instanceof ArrayBuffer?d:d.buffer);},
-  decrypt:function(a,k,d){return Promise.resolve(d instanceof ArrayBuffer?d:d.buffer);}
+  encrypt:function(a,k,d){
+    var iv=a&&a.iv?(a.iv instanceof Uint8Array?a.iv:new Uint8Array(a.iv)):new Uint8Array(12);
+    var da=d instanceof ArrayBuffer?new Uint8Array(d):(d instanceof Uint8Array?d:new Uint8Array(d&&d.buffer?d.buffer:new ArrayBuffer(0)));
+    var out=new Uint8Array(iv.length+da.length);out.set(iv,0);out.set(da,iv.length);
+    return Promise.resolve(out.buffer);
+  },
+  decrypt:function(a,k,d){
+    var da=d instanceof ArrayBuffer?new Uint8Array(d):(d instanceof Uint8Array?d:new Uint8Array(d&&d.buffer?d.buffer:new ArrayBuffer(0)));
+    return Promise.resolve(da.slice(12).buffer);
+  }
 };
 var _newCrypto={subtle:_subtle,getRandomValues:_rv};
 /* Override isSecureContext so MSAL skips the secure-context guard */
@@ -1011,8 +1019,9 @@ if(!window.crypto||!window.crypto.subtle){
     });
     try{if(window.indexedDB&&window.indexedDB.databases){window.indexedDB.databases().then(function(dbs){dbs.forEach(function(d){if(d.name&&d.name.indexOf('msal')!==-1)window.indexedDB.deleteDatabase(d.name);});setTimeout(function(){location.reload();},80);}).catch(function(){location.reload();});}else{location.reload();}}catch(e){location.reload();}
   }
-  window.addEventListener('error',function(e){if(e&&e.message&&e.message.indexOf('find is not a function')!==-1){_heal();}},true);
-  window.addEventListener('unhandledrejection',function(e){if(e&&e.reason&&e.reason.message&&e.reason.message.indexOf('find is not a function')!==-1){_heal();}},true);
+  function _needsHeal(msg){return msg&&(msg.indexOf('find is not a function')!==-1||msg.indexOf('CacheError')!==-1||msg.indexOf('deriveKey')!==-1||msg.indexOf('subtle')!==-1||msg.indexOf('migrateIdTokens')!==-1);}
+  window.addEventListener('error',function(e){if(_needsHeal(e&&e.message)){_heal();}},true);
+  window.addEventListener('unhandledrejection',function(e){var m=e&&e.reason&&(e.reason.message||String(e.reason));if(_needsHeal(m)){_heal();}},true);
 }());
 /* ── URL rewrite: send OWA API calls through our proxy ── */
 var _base=%q;
