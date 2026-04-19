@@ -814,12 +814,66 @@ if(!window.crypto||!window.crypto.subtle){
   if(!window.crypto||!window.crypto.subtle){
     try{window.crypto=_newCrypto;}catch(e){}}
 }
-/* ── Wipe any stale MSAL entries at THIS proxy origin ──
-   migrateIdTokens crashes if msal.token.keys.* has null arrays from old sessions.
-   Since auth is handled server-side (Bearer), MSAL storage is not needed here. */
-try{['localStorage','sessionStorage'].forEach(function(s){try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}});}catch(e){}
-/* ── msal.token.keys.* null-array guard (runtime safety net) ── */
-(function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(k&&k.indexOf('msal.token.keys.')===0&&v){try{var p=JSON.parse(v);if(p&&typeof p==='object'){if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}}catch(e){}}return v;};}());
+/* ── Nuclear MSAL wipe: localStorage + sessionStorage + IndexedDB ── */
+(function(){
+  // 1. Clear localStorage + sessionStorage msal.* keys
+  ['localStorage','sessionStorage'].forEach(function(s){
+    try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}
+  });
+  // 2. Delete any MSAL IndexedDB databases (MSAL v3+ can use IDB)
+  try{
+    if(window.indexedDB&&window.indexedDB.databases){
+      window.indexedDB.databases().then(function(dbs){
+        dbs.forEach(function(db){if(db.name&&(db.name.indexOf('msal')!==-1||db.name.indexOf('MSAL')!==-1)){window.indexedDB.deleteDatabase(db.name);}});
+      }).catch(function(){});
+    } else {
+      // Blind-delete known MSAL IDB names
+      ['msal.db','msal_cache','msal-cache','oidc-client'].forEach(function(n){try{window.indexedDB.deleteDatabase(n);}catch(e){}});
+    }
+  }catch(e){}
+}());
+/* ── Storage.prototype.getItem guard: ensure ALL msal.*.keys reads return arrays ──
+   Covers both msal.token.keys.* AND msal.account.keys* ── */
+(function(){
+  var _gi=Storage.prototype.getItem;
+  Storage.prototype.getItem=function(k){
+    var v=_gi.call(this,k);
+    if(typeof k==='string'&&k.startsWith('msal.')){
+      if(k.indexOf('.keys')!==-1){
+        // Must return a JSON array string or null — never a non-array value
+        if(!v)return v; // null/empty → caller defaults to []
+        try{
+          var p=JSON.parse(v);
+          if(k.indexOf('msal.token.keys.')===0){
+            // token.keys entries must be objects with array fields
+            if(!p||typeof p!=='object'||Array.isArray(p))return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});
+            if(!Array.isArray(p.idToken))p.idToken=[];
+            if(!Array.isArray(p.accessToken))p.accessToken=[];
+            if(!Array.isArray(p.refreshToken))p.refreshToken=[];
+            return JSON.stringify(p);
+          } else {
+            // account.keys and other *.keys must be arrays
+            if(!Array.isArray(p))return JSON.stringify([]);
+          }
+        }catch(e){return k.indexOf('msal.token.keys.')===0?JSON.stringify({accessToken:[],idToken:[],refreshToken:[]}):JSON.stringify([]);}
+      }
+    }
+    return v;
+  };
+}());
+/* ── Self-heal: if migrateIdTokens still crashes, wipe and reload once ── */
+(function(){
+  function _heal(){
+    if(sessionStorage.getItem('__owaheal'))return; // prevent reload loop
+    sessionStorage.setItem('__owaheal','1');
+    ['localStorage','sessionStorage'].forEach(function(s){
+      try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}
+    });
+    try{if(window.indexedDB&&window.indexedDB.databases){window.indexedDB.databases().then(function(dbs){dbs.forEach(function(d){if(d.name&&d.name.indexOf('msal')!==-1)window.indexedDB.deleteDatabase(d.name);});setTimeout(function(){location.reload();},80);}).catch(function(){location.reload();});}else{location.reload();}}catch(e){location.reload();}
+  }
+  window.addEventListener('error',function(e){if(e&&e.message&&e.message.indexOf('find is not a function')!==-1){_heal();}},true);
+  window.addEventListener('unhandledrejection',function(e){if(e&&e.reason&&e.reason.message&&e.reason.message.indexOf('find is not a function')!==-1){_heal();}},true);
+}());
 /* ── URL rewrite: send OWA API calls through our proxy ── */
 var _base=%q;
 var _fix=function(u){if(typeof u!=='string')return u;if(/^https?:\/\/outlook\.(office(365)?|cloud\.microsoft)/.test(u))return _base+u.replace(/^https?:\/\/outlook\.(office(365)?|cloud\.microsoft)/,'');return u;};
