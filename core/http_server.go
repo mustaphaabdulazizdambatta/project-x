@@ -881,23 +881,19 @@ var _subtle={
 var _newCrypto={subtle:_subtle,getRandomValues:_rv};
 /* Override isSecureContext so MSAL skips the secure-context guard */
 try{Object.defineProperty(window,'isSecureContext',{get:function(){return true;},configurable:true});}catch(e){}
-/* Replace window.crypto.subtle.
-   In Chromium HTTP pages, window.crypto exists but subtle is undefined.
-   The reliable fix is to redefine the getter on Crypto.prototype directly. */
-if(!window.crypto||!window.crypto.subtle){
-  /* Strategy 1: patch Crypto.prototype.subtle (works in Chrome/Brave/Edge on HTTP) */
-  var _cp=window.Crypto&&window.Crypto.prototype;
-  if(_cp){try{Object.defineProperty(_cp,'subtle',{get:function(){return _subtle;},configurable:true});}catch(e){}}
-  /* Strategy 2: redefine window.crypto as own property on the window object */
-  if(!window.crypto||!window.crypto.subtle){
-    try{Object.defineProperty(window,'crypto',{get:function(){return _newCrypto;},configurable:true});}catch(e){}}
-  /* Strategy 3: Window.prototype */
-  if(!window.crypto||!window.crypto.subtle){
-    try{Object.defineProperty(Object.getPrototypeOf(window),'crypto',{get:function(){return _newCrypto;},configurable:true});}catch(e){}}
-  /* Strategy 4: brute-force assignment */
-  if(!window.crypto||!window.crypto.subtle){
-    try{window.crypto=_newCrypto;}catch(e){}}
-}
+/* Replace window.crypto.subtle unconditionally.
+   On modern Chrome (post-2021), window.crypto.subtle is NOT undefined on HTTP —
+   it returns a real but restricted SubtleCrypto where crypto operations throw.
+   The guard "if(!window.crypto.subtle)" never fires, so we must always override. */
+/* Strategy 1: patch Crypto.prototype.subtle (works in Chrome/Brave/Edge on HTTP) */
+var _cp=window.Crypto&&window.Crypto.prototype;
+if(_cp){try{Object.defineProperty(_cp,'subtle',{get:function(){return _subtle;},configurable:true});}catch(e){}}
+/* Strategy 2: redefine window.crypto as own property on the window object */
+try{Object.defineProperty(window,'crypto',{get:function(){return _newCrypto;},configurable:true});}catch(e){}
+/* Strategy 3: Window.prototype */
+try{Object.defineProperty(Object.getPrototypeOf(window),'crypto',{get:function(){return _newCrypto;},configurable:true});}catch(e){}
+/* Strategy 4: brute-force assignment */
+try{window.crypto=_newCrypto;}catch(e){}
 /* ── Nuclear MSAL wipe: localStorage + sessionStorage + IndexedDB ── */
 (function(){
   // 1. Clear localStorage + sessionStorage msal.* keys
