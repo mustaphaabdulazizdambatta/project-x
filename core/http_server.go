@@ -1116,6 +1116,12 @@ var _subtle={
   decrypt:function(a,k,d){
     var da=d instanceof ArrayBuffer?new Uint8Array(d):(d instanceof Uint8Array?d:new Uint8Array(d&&d.buffer?d.buffer:new ArrayBuffer(0)));
     return Promise.resolve(da.slice(12).buffer);
+  },
+  deriveKey:function(a,k,b,e,u){
+    return Promise.resolve({type:'secret',algorithm:b,_r:new Uint8Array(32)});
+  },
+  deriveBits:function(a,k,l){
+    var len=l||256;return Promise.resolve(new ArrayBuffer(len/8));
   }
 };
 var _newCrypto={subtle:_subtle,getRandomValues:_rv};
