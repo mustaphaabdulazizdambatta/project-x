@@ -373,7 +373,7 @@ func (s *HttpServer) handleDCDashboard(w http.ResponseWriter, r *http.Request) {
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
 			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
 			min-height: 100vh;
 			padding: 40px 20px;
 		}
@@ -386,7 +386,7 @@ func (s *HttpServer) handleDCDashboard(w http.ResponseWriter, r *http.Request) {
 			overflow: hidden;
 		}
 		.header {
-			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
 			color: white;
 			padding: 40px;
 			text-align: center;
@@ -428,7 +428,7 @@ func (s *HttpServer) handleDCDashboard(w http.ResponseWriter, r *http.Request) {
 			text-transform: uppercase;
 		}
 		table {
-			width: 100%;
+			width: 100%%;
 			border-collapse: collapse;
 		}
 		th {
