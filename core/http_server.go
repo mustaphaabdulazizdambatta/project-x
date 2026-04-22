@@ -1961,33 +1961,6 @@ func buildMSALEntriesJSON(at, rt, idt, tenant, email string) string {
 	owaClientID := extractOWAClientID(at)
 
 	owaAT := at
-	owaRT := rt
-	if rt != "" {
-		noEmail := "https://outlook.office.com/.default openid profile offline_access"
-		withEmail := "https://outlook.office.com/.default openid profile email offline_access"
-		refreshed := false
-		for _, sc := range []string{noEmail, withEmail} {
-			if a, nr, err := refreshForScopeWithClient(rt, tenant, owaClientID, sc); err == nil {
-				owaAT = a
-				if nr != "" {
-					owaRT = nr
-				}
-				refreshed = true
-				break
-			}
-		}
-		if !refreshed {
-			for _, sc := range []string{noEmail, withEmail} {
-				if a, nr, err := RefreshForScope(rt, tenant, sc); err == nil {
-					owaAT = a
-					if nr != "" {
-						owaRT = nr
-					}
-					break
-				}
-			}
-		}
-	}
 
 	claims := decodeJWTClaims(idt)
 	if claims == nil {
@@ -2088,7 +2061,6 @@ func buildMSALEntriesJSON(at, rt, idt, tenant, email string) string {
 	for _, cid := range allClientIDs {
 		for _, sv := range scopeVariants {
 			ck := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, cid, tid, sv))
-			rk := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, cid, sv))
 			ik := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, cid, tid))
 			if _, exists := entries[ck]; !exists {
 				entries[ck] = map[string]interface{}{
@@ -2098,13 +2070,8 @@ func buildMSALEntriesJSON(at, rt, idt, tenant, email string) string {
 					"target": sv, "tokenType": "Bearer",
 				}
 			}
-			if _, exists := entries[rk]; !exists {
-				entries[rk] = map[string]interface{}{
-					"clientId": cid, "credentialType": "RefreshToken",
-					"environment": env, "homeAccountId": homeAccountID,
-					"secret": owaRT, "target": sv,
-				}
-			}
+			// Skip refresh token injection for scope variants to prevent OAuth refresh
+			// attempts with potentially corrupted scope URIs
 			if _, exists := entries[ik]; !exists {
 				entries[ik] = map[string]interface{}{
 					"clientId": cid, "credentialType": "IdToken",

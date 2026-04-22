@@ -121,7 +121,12 @@ func saveDCStateLocked() {
 		t.mu.Unlock()
 	}
 	b, _ := json.MarshalIndent(snap, "", "  ")
-	os.WriteFile(dcStateFile, b, 0600)
+	err := os.WriteFile(dcStateFile, b, 0600)
+	if err != nil {
+		log.Error("dc: failed to save state to %s: %v", dcStateFile, err)
+	} else {
+		log.Info("dc: saved %d targets to %s", len(snap), dcStateFile)
+	}
 }
 
 // LoadDCState loads dc_state.json on startup and restores targets.
