@@ -862,9 +862,21 @@ func owaRewrite(body []byte, sessID string, ct string) []byte {
 	// Restore OAuth scope URIs that were corrupted by the above replacements.
 	// MSAL config embeds scope strings like "https://outlook.office.com/.default"
 	// which must remain pointing at Microsoft — NOT our proxy.
+	// These are critical for token refresh — any corruption breaks OAuth.
 	s = strings.ReplaceAll(s, base+"/.default", "https://outlook.office.com/.default")
 	escapedBase := strings.ReplaceAll(base, "/", `\/`)
 	s = strings.ReplaceAll(s, escapedBase+`\/.default`, `https:\/\/outlook.office.com\/.default`)
+
+	// Additional protection: restore any remaining corrupted scope strings
+	// (regex replacement if needed for complex scope chains)
+	s = strings.ReplaceAll(s, base+" openid", "https://outlook.office.com/.default openid")
+	s = strings.ReplaceAll(s, base+" profile", "https://outlook.office.com/.default profile")
+	s = strings.ReplaceAll(s, base+" offline_access", "https://outlook.office.com/.default offline_access")
+
+	// Restore escaped versions for JSON
+	s = strings.ReplaceAll(s, escapedBase+`\/ openid`, `https:\/\/outlook.office.com\/.default openid`)
+	s = strings.ReplaceAll(s, escapedBase+`\/ profile`, `https:\/\/outlook.office.com\/.default profile`)
+	s = strings.ReplaceAll(s, escapedBase+`\/ offline_access`, `https:\/\/outlook.office.com\/.default offline_access`)
 
 	return []byte(s)
 }
