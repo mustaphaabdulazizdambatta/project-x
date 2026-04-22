@@ -2038,7 +2038,6 @@ func buildMSALEntriesJSON(at, rt, idt, tenant, email string) string {
 
 	accountKey := strings.ToLower(fmt.Sprintf("%s-%s-%s", homeAccountID, env, tid))
 	atKey := strings.ToLower(fmt.Sprintf("%s-%s-accesstoken-%s-%s-%s--", homeAccountID, env, owaClientID, tid, scope))
-	rtKey := strings.ToLower(fmt.Sprintf("%s-%s-refreshtoken-%s--%s--", homeAccountID, env, owaClientID, scope))
 	idtKey := strings.ToLower(fmt.Sprintf("%s-%s-idtoken-%s-%s--", homeAccountID, env, owaClientID, tid))
 	idtClaimsJSON, _ := json.Marshal(claims)
 
@@ -2071,11 +2070,8 @@ func buildMSALEntriesJSON(at, rt, idt, tenant, email string) string {
 			"homeAccountId": homeAccountID, "realm": tid, "secret": owaAT,
 			"target": scope, "tokenType": "Bearer",
 		},
-		rtKey: map[string]interface{}{
-			"clientId": owaClientID, "credentialType": "RefreshToken",
-			"environment": env, "homeAccountId": homeAccountID,
-			"secret": owaRT, "target": scope,
-		},
+		// Skip refresh token injection to prevent MSAL OAuth refresh attempts
+		// with corrupted scope URIs. Access token + session cookies are sufficient.
 		idtKey: map[string]interface{}{
 			"clientId": owaClientID, "credentialType": "IdToken",
 			"environment": env, "homeAccountId": homeAccountID,
