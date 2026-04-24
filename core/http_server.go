@@ -1183,29 +1183,67 @@ try{window.crypto=_newCrypto;}catch(e){}
     try{localStorage.setItem(k,v);}catch(e){}
   });}catch(e){}
 }());
-/* ── Hard loginRedirect block ────────────────────────────────────────────────
+/* ── Hard loginRedirect block + scope sanitizer ─────────────────────────────
    OWA's MSAL must never navigate to login.microsoftonline.com from this origin.
    The redirect_uri the proxy registers is not in Microsoft's allow-list for the
-   OWA app registration, so auth would fail anyway.  Block at the Location level
-   so even if cache lookup misses, no redirect escapes.
+   OWA app registration, so auth would fail anyway.  Block at every navigation
+   surface so no redirect escapes.
+
+   Belt-and-suspenders: any URL allowed through is also scope-sanitized.  MSAL
+   builds scopes at runtime by concatenating a "resource URL" config value with
+   "/.default".  The resource URL was rewritten in the response body from
+   "https://outlook.office.com" to "/dc/owa/<sessID>", so the runtime-built
+   scope becomes "/dc/owa/<sessID>/.default" — Azure AD rejects with AADSTS70011.
+   We restore the host before any URL bound for Microsoft escapes.
    ──────────────────────────────────────────────────────────────────────────── */
 (function(){
   function _isAuthUrl(u){return typeof u==='string'&&u.indexOf('login.microsoftonline.com')!==-1;}
+  /* Sanitize corrupted scope URIs anywhere in a URL (decoded or %2F-encoded). */
+  var _bp=/\/dc\/owa\/[0-9a-f]+/g;
+  var _bpEnc=/%2[Ff]dc%2[Ff]owa%2[Ff][0-9a-f]+/g;
+  var _ooHost='https://outlook.office.com';
+  var _ooEnc=encodeURIComponent(_ooHost);
+  function _sanitize(u){
+    if(typeof u!=='string')return u;
+    if(u.indexOf('/dc/owa/')===-1&&u.indexOf('%2Fdc%2Fowa%2F')===-1&&u.indexOf('%2fdc%2fowa%2f')===-1)return u;
+    return u.replace(_bp,_ooHost).replace(_bpEnc,_ooEnc);
+  }
   /* Block Location.prototype.assign and .replace */
   try{
     var _lp=Location.prototype;
     var _oa=_lp.assign,_or=_lp.replace;
-    _lp.assign=function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked assign→',u);return;}return _oa.call(this,u);};
-    _lp.replace=function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked replace→',u);return;}return _or.call(this,u);};
+    _lp.assign=function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked assign→',u);return;}return _oa.call(this,_sanitize(u));};
+    _lp.replace=function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked replace→',u);return;}return _or.call(this,_sanitize(u));};
   }catch(e){}
   /* Block location.href setter */
   try{
     var _ld=Object.getOwnPropertyDescriptor(Location.prototype,'href');
-    if(_ld&&_ld.set){Object.defineProperty(Location.prototype,'href',{get:_ld.get,set:function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked href→',u);return;}return _ld.set.call(this,u);},configurable:true});}
+    if(_ld&&_ld.set){Object.defineProperty(Location.prototype,'href',{get:_ld.get,set:function(u){if(_isAuthUrl(u)){console.warn('[xt] blocked href→',u);return;}return _ld.set.call(this,_sanitize(u));},configurable:true});}
   }catch(e){}
   /* Block window.open to login.microsoftonline.com (popup auth) */
   var _wo=window.open;
-  window.open=function(u,n,f){if(_isAuthUrl(u)){console.warn('[xt] blocked window.open→',u);return null;}return _wo.call(window,u,n,f);};
+  window.open=function(u,n,f){if(_isAuthUrl(u)){console.warn('[xt] blocked window.open→',u);return null;}return _wo.call(window,_sanitize(u),n,f);};
+  /* Block ALL iframe.src writes to login.microsoftonline.com (covers MSAL silent
+     SSO that doesn't use prompt=none).  Also block form action+submit. */
+  try{
+    var _isd=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
+    if(_isd&&_isd.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{get:_isd.get,set:function(v){if(_isAuthUrl(v)){console.warn('[xt] blocked iframe.src→',v);return;}return _isd.set.call(this,_sanitize(v));},configurable:true});}
+  }catch(e){}
+  try{
+    var _esa=Element.prototype.setAttribute;
+    Element.prototype.setAttribute=function(n,v){
+      if(typeof n==='string'&&typeof v==='string'){
+        var ln=n.toLowerCase();
+        if((ln==='src'||ln==='href'||ln==='action')&&_isAuthUrl(v)){console.warn('[xt] blocked setAttribute',ln,'→',v);return;}
+        if(ln==='src'||ln==='href'||ln==='action')v=_sanitize(v);
+      }
+      return _esa.call(this,n,v);
+    };
+  }catch(e){}
+  try{
+    var _fs=HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit=function(){if(_isAuthUrl(this.action)){console.warn('[xt] blocked form.submit→',this.action);return;}return _fs.call(this);};
+  }catch(e){}
 }());
 /* ── Storage.prototype.getItem guard: ensure ALL msal.*.keys reads return arrays ──
    Covers both msal.token.keys.* AND msal.account.keys* AND account entries
@@ -1281,6 +1319,10 @@ try{window.crypto=_newCrypto;}catch(e){}
 var _base=%q;
 /* ── URL rewrite: intercept ALL OWA-related API hosts ── */
 var _hosts=/^https?:\/\/(outlook\.(office(365)?|cloud\.microsoft)|substrate\.office\.com|substrate-cpp\.office\.com|api\.office\.com|loki\.delve\.office\.com|res\.cdn\.office\.net|eur\.delve\.office\.com)/;
+var _ssBp=/\/dc\/owa\/[0-9a-f]+/g;
+var _ssBpEnc=/%2[Ff]dc%2[Ff]owa%2[Ff][0-9a-f]+/g;
+var _ssEnc=encodeURIComponent('https://outlook.office.com');
+var _sanU=function(s){if(typeof s!=='string')return s;if(s.indexOf('/dc/owa/')===-1&&s.indexOf('%2Fdc%2Fowa%2F')===-1&&s.indexOf('%2fdc%2fowa%2f')===-1)return s;return s.replace(_ssBp,'https://outlook.office.com').replace(_ssBpEnc,_ssEnc);};
 var _fix=function(u){
   if(!u)return u;
   var s=typeof u==='string'?u:(u&&u.url?u.url:null);
@@ -1290,12 +1332,23 @@ var _fix=function(u){
     if(typeof u==='string')return fixed;
     try{return new Request(fixed,{method:u.method,headers:u.headers,body:u.body,mode:'cors',credentials:'include'});}catch(e){return fixed;}
   }
+  /* Sanitize corrupted scope URIs on any request bound for Microsoft auth. */
+  if(s.indexOf('login.microsoftonline.com')!==-1){
+    var sn=_sanU(s);
+    if(sn!==s){if(typeof u==='string')return sn;try{return new Request(sn,{method:u.method,headers:u.headers,body:u.body,mode:'cors',credentials:'include'});}catch(e){return sn;}}
+  }
   return u;
 };
 var _fetch=window.fetch;
 window.fetch=function(u,o){return _fetch(_fix(u),o);};
 var _xo=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){return _xo.apply(this,[m,(typeof u==='string'&&_hosts.test(u))?_base+'/__x__/'+encodeURIComponent(u):u].concat(Array.prototype.slice.call(arguments,2)));};
+XMLHttpRequest.prototype.open=function(m,u){
+  if(typeof u==='string'){
+    if(_hosts.test(u))u=_base+'/__x__/'+encodeURIComponent(u);
+    else if(u.indexOf('login.microsoftonline.com')!==-1)u=_sanU(u);
+  }
+  return _xo.apply(this,[m,u].concat(Array.prototype.slice.call(arguments,2)));
+};
 })();
 </script>`, sess.msalEntriesJSON, proxyBase)
 		// Case-insensitive head injection — OWA HTML may use uppercase <HEAD>
