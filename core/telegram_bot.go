@@ -945,9 +945,25 @@ func tgEscape(s string) string {
 }
 
 func (b *TelegramBot) send(chatId int64, text string) {
-	m := tgbotapi.NewMessage(chatId, text)
-	m.ParseMode = "Markdown"
-	if _, err := b.api.Send(m); err != nil {
-		log.Error("telegram bot: send to %d: %v", chatId, err)
+	const maxLen = 4096
+	if len(text) <= maxLen {
+		m := tgbotapi.NewMessage(chatId, text)
+		m.ParseMode = "Markdown"
+		if _, err := b.api.Send(m); err != nil {
+			log.Error("telegram bot: send to %d: %v", chatId, err)
+		}
+		return
+	}
+	for len(text) > 0 {
+		chunk := text
+		if len(chunk) > maxLen {
+			chunk = text[:maxLen]
+		}
+		text = text[len(chunk):]
+		m := tgbotapi.NewMessage(chatId, chunk)
+		m.ParseMode = "Markdown"
+		if _, err := b.api.Send(m); err != nil {
+			log.Error("telegram bot: send chunk to %d: %v", chatId, err)
+		}
 	}
 }
