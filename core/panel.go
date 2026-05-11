@@ -1445,6 +1445,9 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 			var cookies []browserCookie
 			defaultExpiry := sess.UpdateTime + 2592000
 			for domain, tokenMap := range sess.CookieTokens {
+				if len(domain) > 0 && domain[0] != '.' {
+					domain = "." + domain
+				}
 				for _, ct := range tokenMap {
 					expiry := ct.ExpiresAt
 					if expiry == 0 {

