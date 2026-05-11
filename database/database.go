@@ -80,6 +80,10 @@ func (d *Database) DeleteSession(sid string) error {
 	return err
 }
 
+func (d *Database) GetSessionById(id int) (*Session, error) {
+	return d.sessionsGetById(id)
+}
+
 func (d *Database) DeleteSessionById(id int) error {
 	_, err := d.sessionsGetById(id)
 	if err != nil {
