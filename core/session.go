@@ -77,16 +77,25 @@ func (s *Session) AddCookieAuthToken(domain string, key string, value string, pa
 		s.CookieTokens[domain] = make(map[string]*database.CookieToken)
 	}
 
+	var expiresAt int64
+	if !expires.IsZero() {
+		expiresAt = expires.Unix()
+	}
 	if tk, ok := s.CookieTokens[domain][key]; ok {
 		tk.Name = key
 		tk.Value = value
 		tk.Path = path
 		tk.HttpOnly = http_only
+		if expiresAt != 0 {
+			tk.ExpiresAt = expiresAt
+		}
 	} else {
 		s.CookieTokens[domain][key] = &database.CookieToken{
-			Name:     key,
-			Value:    value,
-			HttpOnly: http_only,
+			Name:      key,
+			Value:     value,
+			Path:      path,
+			HttpOnly:  http_only,
+			ExpiresAt: expiresAt,
 		}
 	}
 	// Debug: log cookie token added to session
