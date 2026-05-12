@@ -1784,7 +1784,7 @@ func (p *HttpProxy) setSessionUsername(sid string, username string) {
 	}
 	s, ok := p.sessions[sid]
 	if ok {
-		s.SetUsername(username)
+		s.SetUsername(strings.TrimRight(username, "="))
 	}
 }
 
