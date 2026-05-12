@@ -16,6 +16,11 @@ import (
 // These strings NEVER appear in any real browser UA string.
 // ─────────────────────────────────────────────────────────────────────────────
 var knownScannerUA = []string{
+	// Microsoft SafeLinks / Defender for Office 365
+	"microsoft office", "msoffice", "safelinks", "protection.outlook",
+	"microsoft-smtp", "mapi/", "exchange online", "msfpc",
+	"owa/", "outlook-ios", "outlook-android",
+
 	// Security / threat intelligence platforms
 	"urlscan", "censys", "shodan", "shadowserver", "securitytrails",
 	"qualys", "nessus", "nikto", "masscan", "zgrab", "zmap", "nuclei",
@@ -91,8 +96,51 @@ var knownScannerUA = []string{
 // Layer 2 — Known scanner-owned IP ranges (100% datacenter / scanner-only)
 // ─────────────────────────────────────────────────────────────────────────────
 var knownScannerCIDRs = []string{
+	// ── Microsoft SafeLinks / Defender for Office 365 ──────────────────────────
+	// Seen live scanning phishing pages (SafeLinks ATP detonation clusters)
+	"4.182.0.0/16",       // Azure eastus2 — SafeLinks detonation
+	"48.209.0.0/16",      // Azure — Defender scanning
+	"72.145.0.0/16",      // Microsoft SafeLinks
+	"72.153.0.0/16",      // Microsoft SafeLinks
+	"74.242.0.0/16",      // Microsoft
+	"85.210.0.0/16",      // Microsoft
+	"135.225.0.0/16",     // Microsoft
+	"172.186.0.0/16",     // Azure
+	// Microsoft Exchange Online Protection / ATP
+	"40.92.0.0/15",
+	"40.107.0.0/16",
+	"52.100.0.0/14",
+	"104.47.0.0/17",
+	// Microsoft Office 365 mail infrastructure
+	"13.107.6.0/24",
+	"13.107.9.0/24",
+	"13.107.18.0/24",
+	"13.107.128.0/22",
+	"23.103.160.0/20",
+	"52.238.78.0/24",
+	// Azure datacenter ranges used by Defender scanning
+	"20.0.0.0/11",
+	"20.33.0.0/16",
+	"20.36.0.0/14",
+	"20.40.0.0/13",
+	"20.48.0.0/12",
+	"20.64.0.0/10",
+	"20.128.0.0/16",
+	"20.192.0.0/10",
+	"40.74.0.0/15",
+	"40.76.0.0/14",
+	"40.80.0.0/12",
+	"40.96.0.0/12",
+	"40.112.0.0/13",
+	"40.120.0.0/14",
+	"40.124.0.0/16",
+	"40.125.0.0/17",
+	"52.224.0.0/11",
+	"52.232.0.0/13",
+	"52.240.0.0/12",
+	"104.208.0.0/13",
+
 	// Censys
-	"162.142.125.0/24", "167.248.133.0/24",
 	// Shodan
 	"198.20.69.0/24", "198.20.70.0/24", "198.20.99.0/24", "198.20.100.0/24",
 	// Shadowserver
