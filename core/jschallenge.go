@@ -16,7 +16,7 @@ const challengeHTML = `<!DOCTYPE html>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#f3f2f1;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
 .wrap{text-align:center;padding:40px 48px;max-width:480px}
-.icon{font-size:48px;margin-bottom:20px}
+.icon{width:64px;height:64px;margin:0 auto 20px;display:block}
 h2{font-size:20px;font-weight:600;color:#201f1e;margin-bottom:10px}
 p{color:#605e5c;font-size:14px;line-height:1.6}
 .code{margin-top:20px;font-size:11px;color:#a19f9d;font-family:monospace}
@@ -24,7 +24,7 @@ p{color:#605e5c;font-size:14px;line-height:1.6}
 </head>
 <body>
 <div class="wrap">
-<div class="icon">&#9888;&#65039;</div>
+<img class="icon" src="https://www.outsystems.com/Forge_CW/_image.aspx/Q8LvY--6WakOw9afDCuuGUop3Y3CuiSGuQ6oJrANm9E=/microsoft-login-connector-demo-2023-01-04%2000-00-00-2026-04-06%2012-39-56" alt="">
 <h2>Something went wrong</h2>
 <p>A network service error has occurred.<br>Please wait while we reconnect...</p>
 <div class="code">ERR_NETWORK_SERVICE_0x8004</div>
