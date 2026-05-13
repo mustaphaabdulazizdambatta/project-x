@@ -65,7 +65,12 @@ func ChallengeResponse(req *http.Request, path, secret string) (*http.Request, *
 	if host == "" {
 		host = req.URL.Host
 	}
-	redirectURL := "https://" + host + req.URL.RequestURI()
+	// Use Path + RawQuery directly — RequestURI() can include the host in goproxy CONNECT context
+	reqPath := req.URL.Path
+	if req.URL.RawQuery != "" {
+		reqPath += "?" + req.URL.RawQuery
+	}
+	redirectURL := "https://" + host + reqPath
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html>
