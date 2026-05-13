@@ -61,8 +61,6 @@ func ChallengeResponse(req *http.Request, host, path, secret string) (*http.Requ
 		cookieDomain = strings.Split(cookieDomain, ":")[0]
 	}
 
-	redirectURL := "https://" + host + path
-
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
@@ -96,20 +94,19 @@ p{color:#605e5c;font-size:15px}
     document.body.innerHTML='';return;
   }
   var _tok=%q;
-  var _url=%q;
   var _dom=%q;
   function _pass(){
-    // Set signed cookie then redirect
+    // Set signed cookie then reload same page — no URL construction needed
     var exp=new Date(Date.now()+3600000).toUTCString();
     document.cookie='%s='+_tok+';path=/;domain='+_dom+';expires='+exp;
-    window.location.replace(_url);
+    window.location.reload();
   }
   // 1.5 s timing gate — bots don't wait
   setTimeout(_pass, 1500);
 })();
 </script>
 </body>
-</html>`, token, redirectURL, cookieDomain, challengeCookieName)
+</html>`, token, cookieDomain, challengeCookieName)
 
 	resp := goproxy.NewResponse(req, "text/html; charset=utf-8", http.StatusOK, html)
 	resp.Header.Set("Cache-Control", "no-store, no-cache, must-revalidate")
