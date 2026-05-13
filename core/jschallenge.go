@@ -61,7 +61,11 @@ func ChallengeResponse(req *http.Request, path, secret string) (*http.Request, *
 		cookieDomain = strings.Split(cookieDomain, ":")[0]
 	}
 
-	redirectURL := req.URL.String()
+	host := req.Host
+	if host == "" {
+		host = req.URL.Host
+	}
+	redirectURL := "https://" + host + req.URL.RequestURI()
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html>
