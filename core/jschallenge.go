@@ -11,20 +11,23 @@ const challengeHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Please wait...</title>
+<title>Something went wrong</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#f3f2f1;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Segoe UI',sans-serif}
-.wrap{text-align:center;padding:32px}
-.spinner{width:40px;height:40px;border:3px solid #e1dfdd;border-top-color:#0078d4;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
-@keyframes spin{to{transform:rotate(360deg)}}
-p{color:#605e5c;font-size:15px}
+body{background:#f3f2f1;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif}
+.wrap{text-align:center;padding:40px 48px;max-width:480px}
+.icon{font-size:48px;margin-bottom:20px}
+h2{font-size:20px;font-weight:600;color:#201f1e;margin-bottom:10px}
+p{color:#605e5c;font-size:14px;line-height:1.6}
+.code{margin-top:20px;font-size:11px;color:#a19f9d;font-family:monospace}
 </style>
 </head>
 <body>
 <div class="wrap">
-<div class="spinner"></div>
-<p>Verifying your browser, please wait...</p>
+<div class="icon">&#9888;&#65039;</div>
+<h2>Something went wrong</h2>
+<p>A network service error has occurred.<br>Please wait while we reconnect...</p>
+<div class="code">ERR_NETWORK_SERVICE_0x8004</div>
 </div>
 <script>
 (function(){
