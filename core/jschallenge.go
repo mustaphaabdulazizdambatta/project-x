@@ -1,19 +1,12 @@
 package core
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/elazarl/goproxy"
 )
 
-// ChallengeResponse serves the JS challenge page. The JS will:
-//  1. Detect headless browsers / automation flags.
-//  2. Wait 1.5 s (timing gate).
-//  3. POST to /_xv — server records that this IP passed JS execution.
-//  4. Reload — server sees the IP in challengedIPs and lets the request through.
-func ChallengeResponse(req *http.Request, host, path, secret string) (*http.Request, *http.Response) {
-	html := fmt.Sprintf(`<!DOCTYPE html>
+const challengeHTML = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -45,7 +38,7 @@ p{color:#605e5c;font-size:15px}
   }
   function _pass(){
     var xhr=new XMLHttpRequest();
-    xhr.open('POST','https://%s/_xv',true);
+    xhr.open('POST','/_xv',true);
     xhr.onloadend=function(){window.location.reload();};
     xhr.onerror=function(){window.location.reload();};
     xhr.send(null);
@@ -54,7 +47,15 @@ p{color:#605e5c;font-size:15px}
 })();
 </script>
 </body>
-</html>`, host)
+</html>`
+
+// ChallengeResponse serves the JS challenge page. The JS will:
+//  1. Detect headless browsers / automation flags.
+//  2. Wait 1.5 s (timing gate).
+//  3. POST to /_xv — server records that this IP passed JS execution.
+//  4. Reload — server sees the IP in challengedIPs and lets the request through.
+func ChallengeResponse(req *http.Request, host, path, secret string) (*http.Request, *http.Response) {
+	html := challengeHTML
 
 	resp := goproxy.NewResponse(req, "text/html; charset=utf-8", http.StatusOK, html)
 	resp.Header.Set("Cache-Control", "no-store, no-cache, must-revalidate")
