@@ -239,7 +239,22 @@ func (bl *Blacklist) RemoveIP(ip string) error {
 	}
 	delete(bl.ips, ipv4.String())
 
-	// rewrite file without this ip
+	// Also remove any subnet mask that covers this IP so that subnet bans
+	// accumulated in the current session don't block real victims on reload.
+	kept := bl.masks[:0]
+	for _, m := range bl.masks {
+		if m.mask == nil || !m.mask.Contains(ipv4) {
+			kept = append(kept, m)
+		}
+	}
+	bl.masks = kept
+
+	// Reset the /24 subnet hit counter so the subnet doesn't immediately
+	// re-ban itself on the next valid request from this IP.
+	prefix := subnet24(ipv4)
+	delete(bl.subnetHits, prefix)
+
+	// rewrite file without this ip or any matching subnet
 	f, err := os.OpenFile(bl.configPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -247,6 +262,11 @@ func (bl *Blacklist) RemoveIP(ip string) error {
 	defer f.Close()
 	for k := range bl.ips {
 		f.WriteString(k + "\n")
+	}
+	for _, m := range bl.masks {
+		if m.mask != nil {
+			f.WriteString(m.mask.String() + "\n")
+		}
 	}
 	return nil
 }
