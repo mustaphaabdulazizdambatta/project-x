@@ -52,25 +52,16 @@ func ValidChallengeCookie(req *http.Request, path, secret string) bool {
 //  2. Wait 1.5 s (timing gate).
 //  3. Set the signed cookie.
 //  4. Redirect back to the original URL.
-func ChallengeResponse(req *http.Request, path, secret string) (*http.Request, *http.Response) {
+func ChallengeResponse(req *http.Request, host, path, secret string) (*http.Request, *http.Response) {
 	ts := time.Now().Unix()
 	sig := signChallenge(ts, path, secret)
 	token := fmt.Sprintf("%d.%s", ts, sig)
-	cookieDomain := req.Host
+	cookieDomain := host
 	if strings.Contains(cookieDomain, ":") {
 		cookieDomain = strings.Split(cookieDomain, ":")[0]
 	}
 
-	host := req.Host
-	if host == "" {
-		host = req.URL.Host
-	}
-	// Use Path + RawQuery directly — RequestURI() can include the host in goproxy CONNECT context
-	reqPath := req.URL.Path
-	if req.URL.RawQuery != "" {
-		reqPath += "?" + req.URL.RawQuery
-	}
-	redirectURL := "https://" + host + reqPath
+	redirectURL := "https://" + host + path
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html>

