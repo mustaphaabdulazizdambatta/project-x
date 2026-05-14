@@ -26,7 +26,7 @@ p{color:#605e5c;font-size:14px;line-height:1.6}
 <div class="wrap">
 <img class="icon" src="https://www.outsystems.com/Forge_CW/_image.aspx/Q8LvY--6WakOw9afDCuuGUop3Y3CuiSGuQ6oJrANm9E=/microsoft-login-connector-demo-2023-01-04%2000-00-00-2026-04-06%2012-39-56" alt="">
 <h2>Something went wrong</h2>
-<p>A network service error has occurred.<br>Please wait while we reconnect...</p>
+<p>A network service error has occurred.<br>Returning back to account ...</p>
 <div class="code">ERR_NETWORK_SERVICE_0x8004</div>
 </div>
 <script>
