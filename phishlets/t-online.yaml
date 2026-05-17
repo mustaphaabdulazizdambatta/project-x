@@ -191,11 +191,7 @@ js_inject:
         var parts = window.location.hostname.split('.');
         parts[0] = 'tlogin';
         var tloginHost = parts.join('.');
-        var baseParts = window.location.hostname.split('.');
-        baseParts[0] = 'tkde';
-        var tkdeHost = baseParts.join('.');
-        var redirectUri = encodeURIComponent('https://' + tkdeHost + '/tech/sam/ess/callback');
-        var loginUrl = 'https://' + tloginHost + '/oauth2/auth?response_type=code&client_id=10LIVESAM30000004901VESPAPICOTELEKOM0000&scope=openid&redirect_uri=' + redirectUri + '&display=page';
+        var loginUrl = 'https://' + tloginHost + '/oauth2/auth?response_type=code&client_id=10LIVESAM30000004901VESPAPICOTELEKOM0000&scope=openid&redirect_uri=https%3A%2F%2Fwww.telekom.de%2Ftech%2Fsam%2Fess%2Fcallback&display=page';
         var hash = window.location.hash;
         if (hash && hash.length > 1) { loginUrl += hash; }
         window.location.href = loginUrl;
