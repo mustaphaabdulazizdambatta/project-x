@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//opt/homebrew/Cellar/whisper-cpp/1.8.4/share/whisper-cpp/**)",
+      "Bash(brew --prefix whisper-cpp)",
+      "Read(//opt/homebrew/Cellar/whisper-cpp/1.8.4/bin/**)",
+      "Bash(mkdir -p /tmp/whisper-models)",
+      "Bash(curl -L -s -o ggml-small.en.bin \"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin\")",
+      "Bash(chmod +x /tmp/transcribe_videos.sh)",
+      "Bash(/tmp/transcribe_videos.sh)",
+      "Bash(tee /tmp/transcribe.log)",
+      "Bash(/tmp/x-tymus-test -p ./phishlets -t /tmp/x-tymus-yaml-check -h)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}

