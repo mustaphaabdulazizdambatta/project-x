@@ -207,10 +207,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				return req, resp
 			}
 
-			// Device-code routes (/dc/…) and admin panel (/admin/…).
-			// Forwarded to the local HTTP server on :80 so they work over HTTPS
-			// (required for window.crypto / MSAL inside the OWA proxy page).
-			if strings.HasPrefix(req.URL.Path, "/dc/") || strings.HasPrefix(req.URL.Path, "/admin/") {
+			// Admin panel (/admin/…).
+			// Forwarded to the local HTTP server on :80 so it works over HTTPS.
+			if strings.HasPrefix(req.URL.Path, "/admin/") {
 				if resp := dcProxyLocal(req); resp != nil {
 					return req, resp
 				}

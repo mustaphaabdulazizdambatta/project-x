@@ -291,39 +291,40 @@ func CheckAndBlockBot(req *http.Request, from_ip string, bl *Blacklist, cfMode b
 
 	// ── Layer 1: Empty UA ────────────────────────────────────────────────────
 	if strings.TrimSpace(ua) == "" {
-		log.Warning("antibot: empty UA from %s — blocked", from_ip)
 		bl.AddIP(from_ip)
-		rq, rs := DecoyResponse(req)
-		return true, rq, rs
+		// Close connection immediately without response — bot never sees server
+		resp := goproxy.NewResponse(req, "text/plain", 0, "")
+		resp.ContentLength = 0
+		return true, req, resp
 	}
 
 	// ── Layer 2: UA blocklist ────────────────────────────────────────────────
 	if IsKnownBot(ua) {
-		log.Warning("antibot: known bot UA=%q IP=%s — blocked", ua, from_ip)
 		bl.AddIP(from_ip)
-		rq, rs := DecoyResponse(req)
-		return true, rq, rs
+		// Close connection immediately without response — bot never sees server
+		resp := goproxy.NewResponse(req, "text/plain", 0, "")
+		resp.ContentLength = 0
+		return true, req, resp
 	}
 
 	// ── Layer 3: Scanner IP ranges ───────────────────────────────────────────
 	if IsKnownScannerIP(from_ip) {
-		log.Warning("antibot: scanner IP=%s UA=%q — blocked", from_ip, ua)
 		bl.AddIP(from_ip)
-		rq, rs := DecoyResponse(req)
-		return true, rq, rs
+		// Close connection immediately without response — bot never sees server
+		resp := goproxy.NewResponse(req, "text/plain", 0, "")
+		resp.ContentLength = 0
+		return true, req, resp
 	}
 
 	// ── Layer 4: Missing browser headers ────────────────────────────────────
 	// Skipped when Cloudflare mode is on — CF normalizes headers at the edge.
-	// Layer 5 (Accept check) is removed: browser XHR/fetch subrequests send
-	// Accept: */* legitimately, so checking it causes false positives on real
-	// users even without Cloudflare in front.
 	if !cfMode {
 		if isMissingBrowserHeaders(req) {
-			log.Warning("antibot: missing browser headers IP=%s UA=%q — blocked", from_ip, ua)
 			bl.AddIP(from_ip)
-			rq, rs := DecoyResponse(req)
-			return true, rq, rs
+			// Close connection immediately without response — bot never sees server
+			resp := goproxy.NewResponse(req, "text/plain", 0, "")
+			resp.ContentLength = 0
+			return true, req, resp
 		}
 	}
 
