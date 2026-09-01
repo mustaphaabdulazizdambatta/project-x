@@ -1354,26 +1354,14 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <button type="submit" class="btn btn-ghost btn-xs">Save</button>
 </form>`, i, userOptions)
 
-				editForm := fmt.Sprintf(`<details style="margin-top:4px">
-<summary style="cursor:pointer">⚙ Edit</summary>
-<form method="POST" action="/admin/panel?tab=lures" style="margin-top:8px;padding:12px;background:rgba(255,255,255,.02);border-radius:4px;border:1px solid var(--brd)">
+				editForm := fmt.Sprintf(`<form method="POST" action="/admin/panel?tab=lures" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:4px">
 <input type="hidden" name="action" value="edit_lure">
 <input type="hidden" name="lure_id" value="%d">
-<div class="field" style="margin-bottom:8px">
-  <label class="field-label">Custom Hostname</label>
-  <input type="text" name="hostname" value="%s" placeholder="sub.yourdomain.com" style="font-size:11px">
-</div>
-<div class="field" style="margin-bottom:8px">
-  <label class="field-label">Redirect URL</label>
-  <input type="text" name="redirect_url" value="%s" placeholder="https://example.com" style="font-size:11px">
-</div>
-<div class="field" style="margin-bottom:8px">
-  <label class="field-label">Redirector</label>
-  <input type="text" name="redirector" value="%s" placeholder="html redirector page" style="font-size:11px">
-</div>
-<button type="submit" class="btn btn-primary btn-xs">Save Changes</button>
-</form>
-</details>`, i, template.HTMLEscapeString(l.Hostname), template.HTMLEscapeString(l.RedirectUrl), template.HTMLEscapeString(l.Redirector))
+<input type="text" name="hostname" value="%s" placeholder="hostname" style="font-size:11px;width:140px;padding:4px 6px">
+<input type="text" name="redirect_url" value="%s" placeholder="redirect url" style="font-size:11px;width:140px;padding:4px 6px">
+<input type="text" name="redirector" value="%s" placeholder="redirector" style="font-size:11px;width:100px;padding:4px 6px">
+<button type="submit" class="btn btn-primary btn-xs">✓ Save</button>
+</form>`, i, template.HTMLEscapeString(l.Hostname), template.HTMLEscapeString(l.RedirectUrl), template.HTMLEscapeString(l.Redirector))
 
 				deleteLureBtn := fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=lures" onsubmit="return confirm('Delete lure %d?')">
 <input type="hidden" name="action" value="delete_lure">
