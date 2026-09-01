@@ -130,9 +130,11 @@ textarea{resize:vertical;line-height:1.6}
 pre{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r2);padding:11px 13px;font-size:11px;overflow-x:auto;color:#9ca3af;white-space:pre-wrap;word-break:break-all}
 .empty{color:var(--t3);padding:30px 0;text-align:center;font-size:12.5px;font-style:italic}
 form.inline{display:inline}
-details>summary{cursor:pointer;color:var(--blue);font-size:11.5px;list-style:none;display:inline-flex;align-items:center;gap:4px;user-select:none}
+details{display:block;width:100%}
+details>summary{cursor:pointer;color:var(--blue);font-size:11.5px;list-style:none;display:flex;align-items:center;gap:4px;user-select:none}
 details>summary::-webkit-details-marker{display:none}
 details[open]>summary{color:var(--amber)}
+details>form{display:block;width:100%}
 .chain-box{background:rgba(16,185,129,.03);border:1px solid rgba(16,185,129,.1);border-radius:var(--r2);padding:12px;margin-top:8px}
 .chain-label{color:var(--green);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 3px}
 .chain-label:first-child{margin-top:0}
