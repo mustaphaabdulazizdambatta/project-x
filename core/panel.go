@@ -332,6 +332,9 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				if v := strings.TrimSpace(r.FormValue("redirect_url")); v != "" {
 					l.RedirectUrl = v
 				}
+				if v := strings.TrimSpace(r.FormValue("redirector")); v != "" {
+					l.Redirector = v
+				}
 				if v := strings.TrimSpace(r.FormValue("path")); v != "" {
 					l.Path = v
 				}
@@ -730,6 +733,23 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <button type="submit" class="btn btn-ghost btn-xs">Save</button>
 </form>`, i, userOptions)
 
+				editForm := fmt.Sprintf(`<details style="margin-top:4px">
+<summary style="cursor:pointer">⚙ Edit</summary>
+<form method="POST" action="/admin/panel?tab=lures" style="margin-top:8px;padding:12px;background:rgba(255,255,255,.02);border-radius:4px;border:1px solid var(--brd)">
+<input type="hidden" name="action" value="edit_lure">
+<input type="hidden" name="lure_id" value="%d">
+<div class="field" style="margin-bottom:8px">
+  <label class="field-label">Redirect URL</label>
+  <input type="text" name="redirect_url" value="%s" placeholder="https://example.com" style="font-size:11px">
+</div>
+<div class="field" style="margin-bottom:8px">
+  <label class="field-label">Redirector</label>
+  <input type="text" name="redirector" value="%s" placeholder="html redirector page" style="font-size:11px">
+</div>
+<button type="submit" class="btn btn-primary btn-xs">Save Changes</button>
+</form>
+</details>`, i, template.HTMLEscapeString(l.RedirectUrl), template.HTMLEscapeString(l.Redirector))
+
 				deleteLureBtn := fmt.Sprintf(`<form class="inline" method="POST" action="/admin/panel?tab=lures" onsubmit="return confirm('Delete lure %d?')">
 <input type="hidden" name="action" value="delete_lure">
 <input type="hidden" name="lure_id" value="%d">
@@ -743,13 +763,14 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 <td>%s</td>
 <td>%s<br>%s</td>
 <td>%s</td>
-<td>%s</td>
+<td>%s<br>%s</td>
 </tr>`, i,
 					template.HTMLEscapeString(l.Phishlet),
 					phishletFriendlyName(l.Phishlet),
 					lureURLCell, redirectCell,
 					userCell, assignForm,
 					chainCell,
+					editForm,
 					deleteLureBtn,
 				))
 			}
