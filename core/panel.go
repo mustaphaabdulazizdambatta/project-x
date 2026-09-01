@@ -1270,49 +1270,33 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`<div class="section">`)
 		b.WriteString(sectionHd("Edit Lure Settings"))
 		if len(allLures) > 0 {
-			b.WriteString(`<form method="POST" action="/admin/panel?tab=lures" class="form-grid">
-<input type="hidden" name="action" value="edit_lure">
-<div class="field">
-  <label class="field-label">Select Lure</label>
-  <select name="lure_id" id="lure_select" onchange="updateLureSettings()" style="width:100%">
-    <option value="">— Select a lure —</option>`)
 			for i, l := range allLures {
-				b.WriteString(fmt.Sprintf(`<option value="%d" data-hostname="%s" data-redirect="%s" data-redirector="%s">Lure %d (%s)</option>`,
+				b.WriteString(fmt.Sprintf(`<div class="card">
+<form method="POST" action="/admin/panel?tab=lures" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:flex-end">
+  <input type="hidden" name="action" value="edit_lure">
+  <input type="hidden" name="lure_id" value="%d">
+  <div class="field" style="margin-bottom:0">
+    <label class="field-label">Lure %d — %s</label>
+    <input type="text" name="hostname" value="%s" placeholder="hostname">
+  </div>
+  <div class="field" style="margin-bottom:0">
+    <label class="field-label">Redirect URL</label>
+    <input type="text" name="redirect_url" value="%s" placeholder="redirect url">
+  </div>
+  <div class="field" style="margin-bottom:0">
+    <label class="field-label">Redirector</label>
+    <input type="text" name="redirector" value="%s" placeholder="redirector">
+  </div>
+  <button type="submit" class="btn btn-primary">Save</button>
+</form>
+</div>`,
 					i,
+					i, template.HTMLEscapeString(l.Phishlet),
 					template.HTMLEscapeString(l.Hostname),
 					template.HTMLEscapeString(l.RedirectUrl),
 					template.HTMLEscapeString(l.Redirector),
-					i,
-					template.HTMLEscapeString(l.Phishlet),
 				))
 			}
-			b.WriteString(`</select>
-</div>
-<div class="field">
-  <label class="field-label">Custom Hostname</label>
-  <input type="text" name="hostname" id="hostname" placeholder="sub.yourdomain.com">
-</div>
-<div class="field">
-  <label class="field-label">Redirect URL</label>
-  <input type="text" name="redirect_url" id="redirect_url" placeholder="https://example.com">
-</div>
-<div class="field">
-  <label class="field-label">Redirector</label>
-  <input type="text" name="redirector" id="redirector" placeholder="html redirector page">
-</div>
-<div class="field field-full">
-  <button type="submit" class="btn btn-primary">Save Settings</button>
-</div>
-</form>
-<script>
-function updateLureSettings() {
-  var select = document.getElementById('lure_select');
-  var option = select.options[select.selectedIndex];
-  document.getElementById('hostname').value = option.getAttribute('data-hostname') || '';
-  document.getElementById('redirect_url').value = option.getAttribute('data-redirect') || '';
-  document.getElementById('redirector').value = option.getAttribute('data-redirector') || '';
-}
-</script>`)
 		} else {
 			b.WriteString(`<div class="empty">No lures available to edit.</div>`)
 		}
