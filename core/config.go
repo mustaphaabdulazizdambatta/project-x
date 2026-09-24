@@ -744,6 +744,10 @@ func (c *Config) refreshActiveHostnames() {
 			}
 		}
 	}
+	// Include Device Code landing host if configured
+	if dcLandingHost := c.GetDCLandingHost(); dcLandingHost != "" {
+		c.activeHostnames = append(c.activeHostnames, strings.ToLower(dcLandingHost))
+	}
 }
 
 func (c *Config) GetActiveHostnames(site string) []string {
