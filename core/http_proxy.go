@@ -1887,11 +1887,13 @@ func (p *HttpProxy) httpsWorker() {
 
 			tlsConn, err := vhost.TLS(c)
 			if err != nil {
+				log.Error("[httpsWorker] vhost.TLS error: %v", err)
 				return
 			}
 
 			hostname := tlsConn.Host()
 			if hostname == "" {
+				log.Error("[httpsWorker] empty hostname from TLS SNI")
 				return
 			}
 
