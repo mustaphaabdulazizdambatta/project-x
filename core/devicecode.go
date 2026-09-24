@@ -258,6 +258,8 @@ func LaunchCampaign(name, template string, emails []string) (*DCCampaign, error)
 		go func(t *DCTarget) {
 			if err := sendDCEmail(t, template); err != nil {
 				log.Error("dc campaign [%d] email to %s: %v", camp.ID, t.Email, err)
+			} else {
+				log.Success("dc campaign [%d] email sent to %s", camp.ID, t.Email)
 			}
 		}(tgt)
 	}

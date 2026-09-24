@@ -187,6 +187,21 @@ func (t *Terminal) DoWork() {
 			if err != nil {
 				log.Error("dc: %v", err)
 			}
+		case "test-smtp":
+			cmd_ok = true
+			host := t.cfg.GetSmtpHost()
+			port := t.cfg.GetSmtpPort()
+			user := t.cfg.GetSmtpUser()
+			from := t.cfg.GetSmtpFrom()
+			if host == "" || user == "" {
+				log.Error("SMTP not configured. Set: config smtp_host, config smtp_user, config smtp_pass, config smtp_from")
+				return
+			}
+			log.Info("SMTP Configuration:")
+			log.Info("  host: %s:%d", host, port)
+			log.Info("  user: %s", user)
+			log.Info("  from: %s", from)
+			log.Success("SMTP config is set. Ready to send emails.")
 		case "test-certs":
 			cmd_ok = true
 			t.manageCertificates(true)
