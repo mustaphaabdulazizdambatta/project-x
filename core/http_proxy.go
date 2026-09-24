@@ -1872,11 +1872,16 @@ func (p *HttpProxy) httpsWorker() {
 	}
 	log.Info("[httpsWorker] successfully listening on %s", p.Server.Addr)
 
+	// Wrap TCP listener with TLS using certmagic certificates
+	tlsCfg := p.crt_db.GetTLSConfig()
+	tlsListener := tls.NewListener(p.sniListener, tlsCfg)
+	log.Info("[httpsWorker] TLS listener created with certmagic certificates")
+
 	p.isRunning = true
 	for p.isRunning {
-		c, err := p.sniListener.Accept()
+		c, err := tlsListener.Accept()
 		if err != nil {
-			log.Error("Error accepting connection: %s", err)
+			log.Error("[httpsWorker] error accepting TLS connection: %s", err)
 			continue
 		}
 
@@ -1885,13 +1890,19 @@ func (p *HttpProxy) httpsWorker() {
 			c.SetReadDeadline(now.Add(httpReadTimeout))
 			c.SetWriteDeadline(now.Add(httpWriteTimeout))
 
-			tlsConn, err := vhost.TLS(c)
-			if err != nil {
-				log.Error("[httpsWorker] vhost.TLS error: %v", err)
+			tlsConn, ok := c.(*tls.Conn)
+			if !ok {
+				log.Error("[httpsWorker] connection is not TLS")
 				return
 			}
 
-			hostname := tlsConn.Host()
+			// Perform the TLS handshake
+			if err := tlsConn.Handshake(); err != nil {
+				log.Error("[httpsWorker] TLS handshake failed: %v", err)
+				return
+			}
+
+			hostname := tlsConn.ConnectionState().ServerName
 			if hostname == "" {
 				log.Error("[httpsWorker] empty hostname from TLS SNI")
 				return
