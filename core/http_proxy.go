@@ -1857,11 +1857,13 @@ func (p *HttpProxy) setSessionCustom(sid string, name string, value string) {
 func (p *HttpProxy) httpsWorker() {
 	var err error
 
+	log.Info("httpsWorker: attempting to listen on %s", p.Server.Addr)
 	p.sniListener, err = net.Listen("tcp", p.Server.Addr)
 	if err != nil {
-		log.Fatal("%s", err)
+		log.Fatal("httpsWorker: failed to listen on %s: %v", p.Server.Addr, err)
 		os.Exit(1)
 	}
+	log.Info("httpsWorker: successfully listening on %s", p.Server.Addr)
 
 	p.isRunning = true
 	for p.isRunning {
