@@ -675,6 +675,11 @@ func (t *Terminal) handleDC(args []string) error {
 					if tgt.AccessToken != "" {
 						log.Info("  tokens   : ✓ captured")
 					}
+					if GlobalDCCfg != nil {
+						landingHost := GlobalDCCfg.GetDCLandingHost()
+						landingURL := fmt.Sprintf("https://%s/dc/%s", landingHost, tgt.LandingToken)
+						log.Info("  landing  : %s", landingURL)
+					}
 					return nil
 				}
 			}

