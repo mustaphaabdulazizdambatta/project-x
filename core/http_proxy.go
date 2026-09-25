@@ -1895,12 +1895,7 @@ func (p *HttpProxy) httpsWorker() {
 				return
 			}
 
-			// Perform the TLS handshake
-			if err := tlsConn.Handshake(); err != nil {
-				log.Error("[httpsWorker] TLS handshake failed: %v", err)
-				return
-			}
-
+			// tls.NewListener already performs the handshake, just get the SNI
 			hostname := tlsConn.ConnectionState().ServerName
 			if hostname == "" {
 				log.Error("[httpsWorker] empty hostname from TLS SNI")
