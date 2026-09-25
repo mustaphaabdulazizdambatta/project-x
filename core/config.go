@@ -746,12 +746,8 @@ func (c *Config) refreshActiveHostnames() {
 	}
 	// Include Device Code landing host if configured
 	if dcLandingHost := c.GetDCLandingHost(); dcLandingHost != "" {
-		log.Info("[refreshActiveHostnames] adding DC landing host: %s", dcLandingHost)
 		c.activeHostnames = append(c.activeHostnames, strings.ToLower(dcLandingHost))
-	} else {
-		log.Warning("[refreshActiveHostnames] DC landing host is empty")
 	}
-	log.Info("[refreshActiveHostnames] total active hostnames: %d", len(c.activeHostnames))
 }
 
 func (c *Config) GetActiveHostnames(site string) []string {
@@ -1052,7 +1048,6 @@ func (c *Config) GetBaseDomain() string {
 // falling back to the bare root domain.
 func (c *Config) GetDCLandingHost() string {
 	if c.general.DCLandingHost != "" {
-		log.Debug("[GetDCLandingHost] returning configured: %s", c.general.DCLandingHost)
 		return c.general.DCLandingHost
 	}
 	sites := c.GetEnabledSites()
@@ -1062,11 +1057,9 @@ func (c *Config) GetDCLandingHost() string {
 			continue
 		}
 		if h := pl.GetLandingPhishHost(); h != "" {
-			log.Debug("[GetDCLandingHost] returning from phishlet: %s", h)
 			return h
 		}
 	}
-	log.Debug("[GetDCLandingHost] falling back to domain: %s", c.general.Domain)
 	return c.general.Domain
 }
 

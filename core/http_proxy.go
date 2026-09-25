@@ -1863,14 +1863,11 @@ func (p *HttpProxy) httpsWorker() {
 
 	var err error
 
-	log.Info("[httpsWorker] starting, Server.Addr=%s", p.Server.Addr)
-	log.Info("[httpsWorker] attempting to listen on %s", p.Server.Addr)
 	p.sniListener, err = net.Listen("tcp", p.Server.Addr)
 	if err != nil {
-		log.Fatal("[httpsWorker] FAILED to listen on %s: %v", p.Server.Addr, err)
+		log.Fatal("httpsWorker: failed to listen on %s: %v", p.Server.Addr, err)
 		os.Exit(1)
 	}
-	log.Info("[httpsWorker] successfully listening on %s", p.Server.Addr)
 
 	p.isRunning = true
 	for p.isRunning {
@@ -1887,13 +1884,11 @@ func (p *HttpProxy) httpsWorker() {
 
 			tlsConn, err := vhost.TLS(c)
 			if err != nil {
-				log.Error("[httpsWorker] vhost.TLS error: %v", err)
 				return
 			}
 
 			hostname := tlsConn.Host()
 			if hostname == "" {
-				log.Error("[httpsWorker] empty hostname from TLS SNI")
 				return
 			}
 
@@ -2126,7 +2121,6 @@ func (p *HttpProxy) injectOgHeaders(l *Lure, body []byte) []byte {
 }
 
 func (p *HttpProxy) Start() error {
-	log.Info("HttpProxy.Start() called")
 	go p.httpsWorker()
 	return nil
 }
