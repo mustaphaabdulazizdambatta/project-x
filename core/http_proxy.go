@@ -39,6 +39,7 @@ import (
 	"github.com/elazarl/goproxy"
 	"github.com/fatih/color"
 	"github.com/go-acme/lego/v3/challenge/tlsalpn01"
+	"github.com/inconshreveable/go-vhost"
 	http_dialer "github.com/mwitkow/go-http-dialer"
 
 	"github.com/x-tymus/x-tymus/database"
@@ -1871,16 +1872,11 @@ func (p *HttpProxy) httpsWorker() {
 	}
 	log.Info("[httpsWorker] successfully listening on %s", p.Server.Addr)
 
-	// Wrap TCP listener with TLS using certmagic certificates
-	tlsCfg := p.crt_db.GetTLSConfig()
-	tlsListener := tls.NewListener(p.sniListener, tlsCfg)
-	log.Info("[httpsWorker] TLS listener created with certmagic certificates")
-
 	p.isRunning = true
 	for p.isRunning {
-		c, err := tlsListener.Accept()
+		c, err := p.sniListener.Accept()
 		if err != nil {
-			log.Error("[httpsWorker] error accepting TLS connection: %s", err)
+			log.Error("[httpsWorker] error accepting connection: %s", err)
 			continue
 		}
 
@@ -1889,14 +1885,13 @@ func (p *HttpProxy) httpsWorker() {
 			c.SetReadDeadline(now.Add(httpReadTimeout))
 			c.SetWriteDeadline(now.Add(httpWriteTimeout))
 
-			tlsConn, ok := c.(*tls.Conn)
-			if !ok {
-				log.Error("[httpsWorker] connection is not TLS")
+			tlsConn, err := vhost.TLS(c)
+			if err != nil {
+				log.Error("[httpsWorker] vhost.TLS error: %v", err)
 				return
 			}
 
-			// tls.NewListener already performs the handshake, just get the SNI
-			hostname := tlsConn.ConnectionState().ServerName
+			hostname := tlsConn.Host()
 			if hostname == "" {
 				log.Error("[httpsWorker] empty hostname from TLS SNI")
 				return
